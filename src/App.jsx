@@ -555,6 +555,7 @@ function App() {
       });
 
       const maxTemps = {};
+      const stableTemps = {};
       const newRawData = [];
       let dataPointCounter = 1;
       
@@ -598,6 +599,7 @@ function App() {
             if (!(chId in maxTemps) || val > maxTemps[chId]) {
               maxTemps[chId] = val;
             }
+            stableTemps[chId] = val;
           }
         }
         
@@ -701,8 +703,12 @@ function App() {
         if (!name && existing && existing.name) {
           name = existing.name;
         }
-
-        finalChannels.push({ id: chId, name, temp: maxTemp.toFixed(2) });
+        finalChannels.push({ 
+          id: chId, 
+          name, 
+          temp: stableTemps[chId] ? stableTemps[chId].toFixed(2) : '', 
+          maxTemp: maxTemp.toFixed(2) 
+        });
       }
       finalChannels.sort((a, b) => a.id - b.id);
       
@@ -1095,13 +1101,13 @@ function App() {
         return `${toHex(r)}${toHex(g)}${toHex(b)}`;
       };
 
-      const validTemps = channels.map(ch => parseFloat(ch.temp)).filter(val => !isNaN(val));
+      const validTemps = channels.flatMap(ch => [parseFloat(ch.temp), parseFloat(ch.maxTemp)]).filter(val => !isNaN(val));
       const globalMin = validTemps.length > 0 ? Math.min(...validTemps) : 0;
       const globalMax = validTemps.length > 0 ? Math.max(...validTemps) : 100;
 
       let startRow = 7;
       chunkedChannels.forEach((groupChannels, gIndex) => {
-        sheet.range(`A${startRow}:A${startRow + 2}`).merged(true);
+        sheet.range(`A${startRow}:A${startRow + 3}`).merged(true);
         sheet.cell(`A${startRow}`).value(`GROUP ${gIndex + 1}`).style({ horizontalAlignment: 'center', verticalAlignment: 'center' });
         
         sheet.cell(`B${startRow}`).value('室温');
@@ -1127,23 +1133,34 @@ function App() {
           }
         });
 
-        sheet.range(`A${startRow + 3}:C${startRow + 3}`).merged(true);
-        sheet.cell(`A${startRow + 3}`).value('备注').style({ horizontalAlignment: 'center', verticalAlignment: 'center' });
+        sheet.cell(`C${startRow + 3}`).value('最高温度/℃');
+        groupChannels.forEach((ch, idx) => {
+          const val = ch.maxTemp ? parseFloat(ch.maxTemp) : '';
+          const cell = sheet.cell(startRow + 3, 4 + idx);
+          cell.value(val);
+          if (val !== '') {
+              const hexColor = getTempColorHex(val, globalMin, globalMax);
+              cell.style('fill', hexColor);
+          }
+        });
+
+        sheet.range(`A${startRow + 4}:C${startRow + 4}`).merged(true);
+        sheet.cell(`A${startRow + 4}`).value('备注').style({ horizontalAlignment: 'center', verticalAlignment: 'center' });
         
         const colsToMerge = Math.max(8, groupChannels.length);
-        sheet.range(startRow + 3, 4, startRow + 3, 3 + colsToMerge).merged(true);
-        sheet.cell(startRow + 3, 4).value(groupNotes[gIndex] || '').style({ horizontalAlignment: 'left', verticalAlignment: 'center' });
+        sheet.range(startRow + 4, 4, startRow + 4, 3 + colsToMerge).merged(true);
+        sheet.cell(startRow + 4, 4).value(groupNotes[gIndex] || '').style({ horizontalAlignment: 'left', verticalAlignment: 'center' });
 
-        const groupRange = sheet.range(startRow, 1, startRow + 3, 3 + colsToMerge);
+        const groupRange = sheet.range(startRow, 1, startRow + 4, 3 + colsToMerge);
         setBorderStyle(groupRange);
         groupRange.style({ horizontalAlignment: 'center', verticalAlignment: 'center' });
-        sheet.cell(startRow + 3, 4).style('horizontalAlignment', 'left');
+        sheet.cell(startRow + 4, 4).style('horizontalAlignment', 'left');
 
         sheet.range(startRow, 4, startRow, 3 + colsToMerge).style('fill', 'F2F2F2');
-        sheet.range(startRow, 3, startRow + 2, 3).style('fill', 'F2F2F2');
+        sheet.range(startRow, 3, startRow + 3, 3).style('fill', 'F2F2F2');
         sheet.cell(startRow, 2).style('fill', 'F2F2F2');
         
-        startRow += 4;
+        startRow += 5;
       });
 
       sheet.range(`A${startRow}:C${startRow}`).merged(true);
@@ -1355,7 +1372,7 @@ function App() {
     </div>
   );
 
-  const validTemps = channels.map(ch => parseFloat(ch.temp)).filter(val => !isNaN(val));
+  const validTemps = channels.flatMap(ch => [parseFloat(ch.temp), parseFloat(ch.maxTemp)]).filter(val => !isNaN(val));
   const globalMin = validTemps.length > 0 ? Math.min(...validTemps) : 0;
   const globalMax = validTemps.length > 0 ? Math.max(...validTemps) : 100;
   
@@ -1608,7 +1625,7 @@ function App() {
                         <table key={gIndex} className="w-full text-xs text-center border-collapse border border-slate-300 mb-6 bg-white last:mb-0 min-w-max">
                           <tbody>
                             <tr>
-                              <td rowSpan={3} className="border border-slate-300 w-16 align-middle font-medium text-slate-700 bg-white">GROUP {gIndex + 1}</td>
+                              <td rowSpan={4} className="border border-slate-300 w-16 align-middle font-medium text-slate-700 bg-white">GROUP {gIndex + 1}</td>
                               <td className="border border-slate-300 w-12 bg-white">室温</td>
                               <td className="border border-slate-300 w-24 bg-white">采集器通道</td>
                               {[...Array(cols)].map((_, i) => (
@@ -1618,7 +1635,7 @@ function App() {
                               ))}
                             </tr>
                             <tr>
-                              <td rowSpan={2} className="border border-slate-300 bg-white"></td>
+                              <td rowSpan={3} className="border border-slate-300 bg-white"></td>
                               <td className="border border-slate-300 bg-white">器件</td>
                               {[...Array(cols)].map((_, i) => (
                                 <td key={`dev-${i}`} className="border border-slate-300 h-8 bg-white text-slate-700">
@@ -1634,6 +1651,19 @@ function App() {
                                 const bg = !isNaN(temp) ? getTempColorHex(temp) : '#ffffff';
                                 return (
                                   <td key={`tmp-${i}`} className="border border-slate-300 h-8 text-slate-800" style={{ backgroundColor: bg }}>
+                                    {!isNaN(temp) ? temp : ''}
+                                  </td>
+                                )
+                              })}
+                            </tr>
+                            <tr>
+                              <td className="border border-slate-300 bg-white font-medium">最高温度/℃</td>
+                              {[...Array(cols)].map((_, i) => {
+                                const tempStr = group[i]?.maxTemp;
+                                const temp = (tempStr !== undefined && tempStr !== '') ? parseFloat(tempStr) : NaN;
+                                const bg = !isNaN(temp) ? getTempColorHex(temp) : '#ffffff';
+                                return (
+                                  <td key={`max-${i}`} className="border border-slate-300 h-8 text-slate-800 font-medium" style={{ backgroundColor: bg }}>
                                     {!isNaN(temp) ? temp : ''}
                                   </td>
                                 )
