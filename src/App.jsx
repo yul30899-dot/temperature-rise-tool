@@ -48,6 +48,49 @@ function App() {
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [confirmModal, setConfirmModal] = useState({ show: false, message: '', onConfirm: null });
   const [isExporting, setIsExporting] = useState(false);
+  const [showMaxTemp, setShowMaxTemp] = useState(false);
+  const [fullRawData, setFullRawData] = useState([]);
+
+  const recalculateChannelsFromData = (data) => {
+    if (!data || data.length === 0) return;
+    const maxTemps = {};
+    const stableTemps = {};
+    data.forEach(row => {
+      Object.keys(row).forEach(key => {
+        if (key.startsWith('CH')) {
+          const chId = parseInt(key.replace('CH', ''), 10);
+          const val = row[key];
+          if (!(chId in maxTemps) || val > maxTemps[chId]) {
+            maxTemps[chId] = val;
+          }
+          stableTemps[chId] = val;
+        }
+      });
+    });
+    setChannels(prevChannels => prevChannels.map(ch => ({
+      ...ch,
+      temp: stableTemps[ch.id] ? stableTemps[ch.id].toFixed(2) : ch.temp,
+      maxTemp: maxTemps[ch.id] ? maxTemps[ch.id].toFixed(2) : ch.maxTemp
+    })));
+  };
+
+  const handleCropData = () => {
+    if (!zoomRange || !fullRawData.length) return;
+    const [start, end] = zoomRange;
+    const cropped = fullRawData.slice(Math.max(0, Math.floor(start)), Math.min(fullRawData.length, Math.floor(end) + 1));
+    setRawData(cropped);
+    recalculateChannelsFromData(cropped);
+    showToast('已截取当前时间段并重新计算温度');
+  };
+
+  const handleResetData = () => {
+    if (!fullRawData.length) return;
+    setRawData(fullRawData);
+    recalculateChannelsFromData(fullRawData);
+    setZoomRange([0, fullRawData.length - 1]);
+    setYDomain(['auto', 'auto']);
+    showToast('已恢复全局数据');
+  };
 
   const showToast = (message, type = 'success') => {
     setToast({ show: true, message, type });
@@ -108,6 +151,27 @@ function App() {
 
   const [zoomRange, setZoomRange] = useState(null); // [startIdx, endIdx]
   const [yDomain, setYDomain] = useState(['auto', 'auto']);
+  const [cropStartIndex, setCropStartIndex] = useState(0);
+  const [cropEndIndex, setCropEndIndex] = useState(0);
+
+  useEffect(() => {
+    if (fullRawData && fullRawData.length > 0) {
+      setCropStartIndex(0);
+      setCropEndIndex(fullRawData.length - 1);
+    }
+  }, [fullRawData]);
+
+  const handleCropExact = () => {
+    if (cropStartIndex >= cropEndIndex) {
+      showToast('起始时间必须早于结束时间！', 'error');
+      return;
+    }
+    const cropped = fullRawData.slice(cropStartIndex, cropEndIndex + 1);
+    setRawData(cropped);
+    recalculateChannelsFromData(cropped);
+    setZoomRange([0, cropped.length - 1]);
+    showToast('已截取选定时间段并重新计算温度');
+  };
 
   useEffect(() => {
     if (rawData.length > 0) {
@@ -741,21 +805,25 @@ function App() {
                col++;
             }
             
-            // Read group note
-            const gNote = summarySheet.getCell(row + 3, 4).text || '';
-            if (gNote) {
-              parsedGroupNotes[gIndex] = gNote;
+            // Read group note by searching next few rows
+            let noteRow = row + 1;
+            while (noteRow <= row + 5) {
+                if (summarySheet.getCell(`A${noteRow}`).text === '备注') {
+                    const gNote = summarySheet.getCell(noteRow, 4).text || '';
+                    if (gNote) {
+                      parsedGroupNotes[gIndex] = gNote;
+                    }
+                    break;
+                }
+                noteRow++;
             }
-            
-            row += 4;
-          } else if (groupLabel) {
-            // It's the bottom note label
+          } else if (groupLabel && !groupLabel.startsWith('备注')) {
+            // It might be the bottom note label
             parsedBottomNoteLabel = groupLabel;
             parsedBottomNote = summarySheet.getCell(`D${row}`).text || '';
-            break;
-          } else {
-            break;
+            // Don't break, keep scanning just in case
           }
+          row++;
         }
 
         setGroupNotes(parsedGroupNotes);
@@ -781,6 +849,7 @@ function App() {
       setChannels(finalChannels);
       setChartSelectedIds(new Set(finalChannels.map(c => c.id)));
       setRawData(newRawData);
+      setFullRawData(newRawData);
       
       showToast(`数据导入成功！共识别到 ${Object.keys(maxTemps).length} 个有效通道。`, 'success');
     } catch (err) {
@@ -799,6 +868,7 @@ function App() {
       onConfirm: () => {
         setChannels([]);
         setRawData([]);
+        setFullRawData([]);
         setChartSelectedIds(new Set());
         setSelectedIds(new Set());
         setImportedFileName('');
@@ -1107,7 +1177,8 @@ function App() {
 
       let startRow = 7;
       chunkedChannels.forEach((groupChannels, gIndex) => {
-        sheet.range(`A${startRow}:A${startRow + 3}`).merged(true);
+        const rowsCount = showMaxTemp ? 4 : 3;
+        sheet.range(`A${startRow}:A${startRow + rowsCount - 1}`).merged(true);
         sheet.cell(`A${startRow}`).value(`GROUP ${gIndex + 1}`).style({ horizontalAlignment: 'center', verticalAlignment: 'center' });
         
         sheet.cell(`B${startRow}`).value('室温');
@@ -1133,34 +1204,37 @@ function App() {
           }
         });
 
-        sheet.cell(`C${startRow + 3}`).value('最高温度/℃');
-        groupChannels.forEach((ch, idx) => {
-          const val = ch.maxTemp ? parseFloat(ch.maxTemp) : '';
-          const cell = sheet.cell(startRow + 3, 4 + idx);
-          cell.value(val);
-          if (val !== '') {
-              const hexColor = getTempColorHex(val, globalMin, globalMax);
-              cell.style('fill', hexColor);
-          }
-        });
+        if (showMaxTemp) {
+          sheet.cell(`C${startRow + 3}`).value('最高温度/℃');
+          groupChannels.forEach((ch, idx) => {
+            const val = ch.maxTemp ? parseFloat(ch.maxTemp) : '';
+            const cell = sheet.cell(startRow + 3, 4 + idx);
+            cell.value(val);
+            if (val !== '') {
+                const hexColor = getTempColorHex(val, globalMin, globalMax);
+                cell.style('fill', hexColor);
+            }
+          });
+        }
 
-        sheet.range(`A${startRow + 4}:C${startRow + 4}`).merged(true);
-        sheet.cell(`A${startRow + 4}`).value('备注').style({ horizontalAlignment: 'center', verticalAlignment: 'center' });
+        const noteRow = startRow + rowsCount;
+        sheet.range(`A${noteRow}:C${noteRow}`).merged(true);
+        sheet.cell(`A${noteRow}`).value('备注').style({ horizontalAlignment: 'center', verticalAlignment: 'center' });
         
         const colsToMerge = Math.max(8, groupChannels.length);
-        sheet.range(startRow + 4, 4, startRow + 4, 3 + colsToMerge).merged(true);
-        sheet.cell(startRow + 4, 4).value(groupNotes[gIndex] || '').style({ horizontalAlignment: 'left', verticalAlignment: 'center' });
+        sheet.range(noteRow, 4, noteRow, 3 + colsToMerge).merged(true);
+        sheet.cell(noteRow, 4).value(groupNotes[gIndex] || '').style({ horizontalAlignment: 'left', verticalAlignment: 'center' });
 
-        const groupRange = sheet.range(startRow, 1, startRow + 4, 3 + colsToMerge);
+        const groupRange = sheet.range(startRow, 1, noteRow, 3 + colsToMerge);
         setBorderStyle(groupRange);
         groupRange.style({ horizontalAlignment: 'center', verticalAlignment: 'center' });
-        sheet.cell(startRow + 4, 4).style('horizontalAlignment', 'left');
+        sheet.cell(noteRow, 4).style('horizontalAlignment', 'left');
 
         sheet.range(startRow, 4, startRow, 3 + colsToMerge).style('fill', 'F2F2F2');
-        sheet.range(startRow, 3, startRow + 3, 3).style('fill', 'F2F2F2');
+        sheet.range(startRow, 3, startRow + rowsCount - 1, 3).style('fill', 'F2F2F2');
         sheet.cell(startRow, 2).style('fill', 'F2F2F2');
         
-        startRow += 5;
+        startRow = noteRow + 2;
       });
 
       sheet.range(`A${startRow}:C${startRow}`).merged(true);
@@ -1531,6 +1605,7 @@ function App() {
                         >B</button>
                       </div>
                     )}
+
                     <span className="text-xs font-medium text-blue-600 bg-blue-50 px-3 py-1 rounded-full border border-blue-100 shadow-sm animate-pulse">
                       ✨ 点击任意文字即可修改内容和格式
                     </span>
@@ -1615,7 +1690,21 @@ function App() {
                       <div className="w-1.5 h-4 bg-teal-500 rounded-full"></div>
                       导入数据预览 (只读)
                     </h4>
-                    <span className="text-xs text-slate-400">实时同步“温度与通道数据”</span>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2 text-sm text-slate-600 bg-white px-3 py-1 rounded border border-slate-200 shadow-sm">
+                        <input 
+                          type="checkbox" 
+                          id="showMaxTemp" 
+                          checked={showMaxTemp}
+                          onChange={(e) => setShowMaxTemp(e.target.checked)}
+                          className="w-3.5 h-3.5 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                        />
+                        <label htmlFor="showMaxTemp" className="cursor-pointer font-medium select-none text-xs">
+                          显示最高温度
+                        </label>
+                      </div>
+                      <span className="text-xs text-slate-400">实时同步“温度与通道数据”</span>
+                    </div>
                   </div>
                   {channels.length > 0 ? (
                     <div className="overflow-x-auto p-4 bg-slate-50/50">
@@ -1656,19 +1745,21 @@ function App() {
                                 )
                               })}
                             </tr>
-                            <tr>
-                              <td className="border border-slate-300 bg-white font-medium">最高温度/℃</td>
-                              {[...Array(cols)].map((_, i) => {
-                                const tempStr = group[i]?.maxTemp;
-                                const temp = (tempStr !== undefined && tempStr !== '') ? parseFloat(tempStr) : NaN;
-                                const bg = !isNaN(temp) ? getTempColorHex(temp) : '#ffffff';
-                                return (
-                                  <td key={`max-${i}`} className="border border-slate-300 h-8 text-slate-800 font-medium" style={{ backgroundColor: bg }}>
-                                    {!isNaN(temp) ? temp : ''}
-                                  </td>
-                                )
-                              })}
-                            </tr>
+                            {showMaxTemp && (
+                              <tr>
+                                <td className="border border-slate-300 bg-white font-medium">最高温度/℃</td>
+                                {[...Array(cols)].map((_, i) => {
+                                  const tempStr = group[i]?.maxTemp;
+                                  const temp = (tempStr !== undefined && tempStr !== '') ? parseFloat(tempStr) : NaN;
+                                  const bg = !isNaN(temp) ? getTempColorHex(temp) : '#ffffff';
+                                  return (
+                                    <td key={`max-${i}`} className="border border-slate-300 h-8 text-slate-800 font-medium" style={{ backgroundColor: bg }}>
+                                      {!isNaN(temp) ? temp : ''}
+                                    </td>
+                                  )
+                                })}
+                              </tr>
+                            )}
                             <tr>
                               <td colSpan={3} className="border border-slate-300 bg-white h-8">备注</td>
                               <td colSpan={cols} className="border border-slate-300 bg-white text-left px-3 text-slate-600">
@@ -1838,9 +1929,37 @@ function App() {
             {activeTab === 'chart' && (
               <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 {rawData.length > 0 && (
-                  <div className="flex justify-end pr-2">
+                  <div className="flex justify-between items-center px-1 mb-2">
+                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm">
+                      <span className="text-xs font-semibold text-slate-600">截取指定时间段:</span>
+                      <select 
+                        className="text-xs border border-slate-300 rounded px-2 py-1 outline-none focus:border-blue-500 bg-slate-50 min-w-[100px] cursor-pointer"
+                        value={cropStartIndex}
+                        onChange={(e) => setCropStartIndex(Number(e.target.value))}
+                      >
+                        {fullRawData.map((d, i) => (
+                          <option key={`start-${i}`} value={i}>{d.time}</option>
+                        ))}
+                      </select>
+                      <span className="text-xs text-slate-400 font-medium">至</span>
+                      <select 
+                        className="text-xs border border-slate-300 rounded px-2 py-1 outline-none focus:border-blue-500 bg-slate-50 min-w-[100px] cursor-pointer"
+                        value={cropEndIndex}
+                        onChange={(e) => setCropEndIndex(Number(e.target.value))}
+                      >
+                        {fullRawData.map((d, i) => (
+                          <option key={`end-${i}`} value={i}>{d.time}</option>
+                        ))}
+                      </select>
+                      <button onClick={handleCropExact} className="ml-2 px-3 py-1 bg-blue-600 text-white rounded shadow-sm text-xs font-medium hover:bg-blue-700 transition active:scale-95">
+                        确认截取
+                      </button>
+                      <button onClick={handleResetData} className="px-3 py-1 bg-slate-100 text-slate-600 rounded shadow-sm text-xs font-medium hover:bg-slate-200 transition active:scale-95 border border-slate-200">
+                        恢复全局
+                      </button>
+                    </div>
                     <div className="text-xs font-medium text-slate-500 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-200 flex items-center gap-2 shadow-sm">
-                      <ChartIcon size={14} className="text-blue-500" /> 滚轮缩放(支持上下左右)，按住左键任意拖拽平移，双击还原
+                      <ChartIcon size={14} className="text-blue-500" /> 滚轮缩放(上下左右)，左键拖拽平移，双击还原
                     </div>
                   </div>
                 )}
