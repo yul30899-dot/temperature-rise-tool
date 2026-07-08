@@ -2167,35 +2167,70 @@ function App() {
                   </div>
                 )}
                 <div 
-                  className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 h-[600px] relative select-none"
+                  className={`bg-white rounded-2xl p-6 shadow-sm border border-slate-100 ${isComparing ? 'h-[800px]' : 'h-[600px]'} relative select-none`}
                   ref={chartContainerRef}
                   onDoubleClick={resetZoom}
                 >
                   {rawData.length > 0 ? (
                     <>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 10 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                        <XAxis dataKey="time" minTickGap={30} tick={{ fontSize: 12, fill: '#64748b' }} />
-                        <YAxis tick={{ fontSize: 12, fill: '#64748b' }} domain={getVisibleYDomain()} tickFormatter={(val) => Number.isInteger(val) ? val : parseFloat(val).toFixed(1)} />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                        {Array.from(chartSelectedIds).map(id => {
-                            const ch = channels.find(c => c.id === id);
-                            if (!ch) return null;
-                            const name = ch.name ? `${ch.name} (CH${id})` : `CH${id}`;
-                            const hue = (id * 137.5) % 360;
-                            return (
-                              <React.Fragment key={id}>
-                                <Line isAnimationActive={false} type="monotone" dataKey={`CH${id}`} name={name} stroke={`hsl(${hue}, 70%, 50%)`} dot={false} strokeWidth={2} />
-                                {isComparing && (
-                                  <Line isAnimationActive={false} type="monotone" dataKey={`compare_CH${id}`} name={`${name} (对比)`} stroke={`hsl(${hue}, 70%, 50%)`} strokeDasharray="5 5" dot={false} strokeWidth={2} strokeOpacity={0.5} />
-                                )}
-                              </React.Fragment>
-                            );
-                        })}
-                      </LineChart>
-                    </ResponsiveContainer>
+                      {isComparing ? (
+                        <div className="w-full h-full flex flex-col gap-4">
+                          <div className="flex-1 min-h-0 relative">
+                            <div className="absolute top-2 left-6 text-xs font-bold text-slate-500 z-10 bg-white/80 px-2 py-1 rounded shadow-sm border border-slate-100">当前测试数据</div>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 0 }} syncId="tempChart">
+                                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                                <XAxis dataKey="time" minTickGap={30} tick={{ fontSize: 12, fill: '#64748b' }} hide={true} />
+                                <YAxis tick={{ fontSize: 12, fill: '#64748b' }} domain={getVisibleYDomain()} tickFormatter={(val) => Number.isInteger(val) ? val : parseFloat(val).toFixed(1)} />
+                                <Tooltip content={<CustomTooltip />} />
+                                <Legend wrapperStyle={{ paddingTop: '10px', paddingBottom: '10px' }} />
+                                {Array.from(chartSelectedIds).map(id => {
+                                    const ch = channels.find(c => c.id === id);
+                                    if (!ch) return null;
+                                    const name = ch.name ? `${ch.name} (CH${id})` : `CH${id}`;
+                                    const hue = (id * 137.5) % 360;
+                                    return <Line key={id} isAnimationActive={false} type="monotone" dataKey={`CH${id}`} name={name} stroke={`hsl(${hue}, 70%, 50%)`} dot={false} strokeWidth={2} />;
+                                })}
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <div className="flex-1 min-h-0 relative">
+                            <div className="absolute top-2 left-6 text-xs font-bold text-slate-500 z-10 bg-white/80 px-2 py-1 rounded shadow-sm border border-slate-100">历史对比数据</div>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={chartData} margin={{ top: 0, right: 30, left: 20, bottom: 20 }} syncId="tempChart">
+                                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                                <XAxis dataKey="time" minTickGap={30} tick={{ fontSize: 12, fill: '#64748b' }} />
+                                <YAxis tick={{ fontSize: 12, fill: '#64748b' }} domain={getVisibleYDomain()} tickFormatter={(val) => Number.isInteger(val) ? val : parseFloat(val).toFixed(1)} />
+                                <Tooltip content={<CustomTooltip />} />
+                                {Array.from(chartSelectedIds).map(id => {
+                                    const ch = channels.find(c => c.id === id);
+                                    if (!ch) return null;
+                                    const name = ch.name ? `${ch.name} (CH${id})` : `CH${id}`;
+                                    const hue = (id * 137.5) % 360;
+                                    return <Line key={id} isAnimationActive={false} type="monotone" dataKey={`compare_CH${id}`} name={`${name} (对比)`} stroke={`hsl(${hue}, 70%, 50%)`} strokeDasharray="5 5" dot={false} strokeWidth={2} strokeOpacity={0.8} />;
+                                })}
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      ) : (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 10 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                            <XAxis dataKey="time" minTickGap={30} tick={{ fontSize: 12, fill: '#64748b' }} />
+                            <YAxis tick={{ fontSize: 12, fill: '#64748b' }} domain={getVisibleYDomain()} tickFormatter={(val) => Number.isInteger(val) ? val : parseFloat(val).toFixed(1)} />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                            {Array.from(chartSelectedIds).map(id => {
+                                const ch = channels.find(c => c.id === id);
+                                if (!ch) return null;
+                                const name = ch.name ? `${ch.name} (CH${id})` : `CH${id}`;
+                                const hue = (id * 137.5) % 360;
+                                return <Line key={id} isAnimationActive={false} type="monotone" dataKey={`CH${id}`} name={name} stroke={`hsl(${hue}, 70%, 50%)`} dot={false} strokeWidth={2} />;
+                            })}
+                          </LineChart>
+                        </ResponsiveContainer>
+                      )}
                     </>
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
