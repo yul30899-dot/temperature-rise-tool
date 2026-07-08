@@ -2180,7 +2180,7 @@ function App() {
                             <ResponsiveContainer width="100%" height="100%">
                               <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 0 }} syncId="tempChart">
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                                <XAxis dataKey="time" minTickGap={30} tick={{ fontSize: 12, fill: '#64748b' }} hide={true} />
+                                <XAxis dataKey="time" minTickGap={30} tick={{ fontSize: 12, fill: '#64748b' }} />
                                 <YAxis tick={{ fontSize: 12, fill: '#64748b' }} domain={getVisibleYDomain()} tickFormatter={(val) => Number.isInteger(val) ? val : parseFloat(val).toFixed(1)} />
                                 <Tooltip content={<CustomTooltip />} />
                                 <Legend wrapperStyle={{ paddingTop: '10px', paddingBottom: '10px' }} />
@@ -2207,7 +2207,7 @@ function App() {
                                     if (!ch) return null;
                                     const name = ch.name ? `${ch.name} (CH${id})` : `CH${id}`;
                                     const hue = (id * 137.5) % 360;
-                                    return <Line key={id} isAnimationActive={false} type="monotone" dataKey={`compare_CH${id}`} name={`${name} (对比)`} stroke={`hsl(${hue}, 70%, 50%)`} strokeDasharray="5 5" dot={false} strokeWidth={2} strokeOpacity={0.8} />;
+                                    return <Line key={id} isAnimationActive={false} type="monotone" dataKey={`compare_CH${id}`} name={`${name} (对比)`} stroke={`hsl(${hue}, 70%, 50%)`} dot={false} strokeWidth={2} />;
                                 })}
                               </LineChart>
                             </ResponsiveContainer>
