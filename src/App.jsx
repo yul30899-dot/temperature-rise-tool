@@ -276,6 +276,9 @@ function App() {
       const point = { ...slice[actualIdx] };
       if (isComparing && compareSlice[actualIdx]) {
         const cp = compareSlice[actualIdx];
+        if (cp.time) {
+          point.compare_time = cp.time;
+        }
         Object.keys(cp).forEach(key => {
           if (key.startsWith('CH')) {
             point[`compare_${key}`] = cp[key];
@@ -2199,7 +2202,7 @@ function App() {
                             <ResponsiveContainer width="100%" height="100%">
                               <LineChart data={chartData} margin={{ top: 0, right: 30, left: 20, bottom: 20 }} syncId="tempChart">
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                                <XAxis dataKey="time" minTickGap={30} tick={{ fontSize: 12, fill: '#64748b' }} />
+                                <XAxis dataKey="compare_time" minTickGap={30} tick={{ fontSize: 12, fill: '#64748b' }} />
                                 <YAxis tick={{ fontSize: 12, fill: '#64748b' }} domain={getVisibleYDomain()} tickFormatter={(val) => Number.isInteger(val) ? val : parseFloat(val).toFixed(1)} />
                                 <Tooltip content={<CustomTooltip />} />
                                 {Array.from(chartSelectedIds).map(id => {
