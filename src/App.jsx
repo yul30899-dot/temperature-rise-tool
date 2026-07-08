@@ -57,7 +57,7 @@ function App() {
   const [isComparing, setIsComparing] = useState(false);
   const compareInputRef = useRef(null);
 
-  const recalculateChannelsFromData = (data) => {
+  const recalculateChannelsFromData = (data, compareData = null) => {
     if (!data || data.length === 0) return;
     const maxTemps = {};
     const stableTemps = {};
@@ -73,11 +73,36 @@ function App() {
         }
       });
     });
-    setChannels(prevChannels => prevChannels.map(ch => ({
-      ...ch,
-      temp: stableTemps[ch.id] ? stableTemps[ch.id].toFixed(2) : ch.temp,
-      maxTemp: maxTemps[ch.id] ? maxTemps[ch.id].toFixed(2) : ch.maxTemp
-    })));
+
+    const compMaxTemps = {};
+    const compStableTemps = {};
+    if (compareData && compareData.length > 0) {
+      compareData.forEach(row => {
+        Object.keys(row).forEach(key => {
+          if (key.startsWith('CH')) {
+            const chId = parseInt(key.replace('CH', ''), 10);
+            const val = row[key];
+            if (!(chId in compMaxTemps) || val > compMaxTemps[chId]) {
+              compMaxTemps[chId] = val;
+            }
+            compStableTemps[chId] = val;
+          }
+        });
+      });
+    }
+
+    setChannels(prevChannels => prevChannels.map(ch => {
+      const updates = {
+        ...ch,
+        temp: stableTemps[ch.id] !== undefined ? stableTemps[ch.id].toFixed(2) : ch.temp,
+        maxTemp: maxTemps[ch.id] !== undefined ? maxTemps[ch.id].toFixed(2) : ch.maxTemp
+      };
+      if (compareData && compareData.length > 0) {
+        updates.compareTemp = compStableTemps[ch.id] !== undefined ? compStableTemps[ch.id].toFixed(2) : ch.compareTemp;
+        updates.compareMaxTemp = compMaxTemps[ch.id] !== undefined ? compMaxTemps[ch.id].toFixed(2) : ch.compareMaxTemp;
+      }
+      return updates;
+    }));
   };
 
   const handleCropData = () => {
@@ -85,7 +110,12 @@ function App() {
     const [start, end] = zoomRange;
     const cropped = fullRawData.slice(Math.max(0, Math.floor(start)), Math.min(fullRawData.length, Math.floor(end) + 1));
     setRawData(cropped);
-    recalculateChannelsFromData(cropped);
+    let compareCropped = [];
+    if (isComparing && compareFullRawData.length > 0) {
+      compareCropped = compareFullRawData.slice(Math.max(0, Math.floor(start)), Math.min(compareFullRawData.length, Math.floor(end) + 1));
+      setCompareRawData(compareCropped);
+    }
+    recalculateChannelsFromData(cropped, isComparing ? compareCropped : null);
     showToast('已截取当前时间段并重新计算温度');
   };
 
@@ -94,7 +124,7 @@ function App() {
     if (isComparing) {
       setCompareRawData(compareFullRawData);
     }
-    recalculateChannelsFromData(fullRawData);
+    recalculateChannelsFromData(fullRawData, isComparing ? compareFullRawData : null);
     setZoomRange(fullRawData.length > 0 ? [0, fullRawData.length - 1] : null);
     if (fullRawData.length > 0) {
       setCropStartIndex(0);
@@ -181,12 +211,13 @@ function App() {
     const cropped = fullRawData.slice(cropStartIndex, cropEndIndex + 1);
     setRawData(cropped);
     
+    let compareCropped = [];
     if (isComparing && compareFullRawData.length > 0) {
-      const compareCropped = compareFullRawData.slice(cropStartIndex, cropEndIndex + 1);
+      compareCropped = compareFullRawData.slice(cropStartIndex, cropEndIndex + 1);
       setCompareRawData(compareCropped);
     }
     
-    recalculateChannelsFromData(cropped);
+    recalculateChannelsFromData(cropped, isComparing ? compareCropped : null);
     setZoomRange([0, cropped.length - 1]);
     showToast('已截取选定时间段记录数据');
   };
@@ -895,6 +926,17 @@ function App() {
         setCompareRawData(newRawData);
         setCompareFullRawData(newRawData);
         setIsComparing(true);
+        setChannels(prev => prev.map(ch => {
+          const compCh = finalChannels.find(c => c.id === ch.id);
+          if (compCh) {
+            return {
+              ...ch,
+              compareTemp: compCh.temp,
+              compareMaxTemp: compCh.maxTemp
+            };
+          }
+          return ch;
+        }));
         showToast(`对比数据成功导入`, 'success');
       } else {
         setChannels(finalChannels);
@@ -1594,6 +1636,12 @@ function App() {
                         setCompareFullRawData([]);
                         setIsComparing(false);
                         setCompareFileName('');
+                        setChannels(prev => prev.map(ch => {
+                          const newCh = { ...ch };
+                          delete newCh.compareTemp;
+                          delete newCh.compareMaxTemp;
+                          return newCh;
+                        }));
                       }}
                       className="flex items-center gap-2 bg-white border border-red-200 text-red-500 px-5 py-2.5 rounded-full font-medium hover:bg-red-50 transition-colors shadow-sm active:scale-95"
                     >
@@ -1799,11 +1847,12 @@ function App() {
                     <div className="overflow-x-auto p-4 bg-slate-50/50">
                       {chunkedChannels.map((group, gIndex) => {
                         const cols = Math.max(8, group.length);
+                        const totalRows = 4 + (isComparing ? 1 : 0) + (showMaxTemp ? (isComparing ? 2 : 1) : 0);
                         return (
                         <table key={gIndex} className="w-full text-xs text-center border-collapse border border-slate-300 mb-6 bg-white last:mb-0 min-w-max">
                           <tbody>
                             <tr>
-                              <td rowSpan={4} className="border border-slate-300 w-16 align-middle font-medium text-slate-700 bg-white">GROUP {gIndex + 1}</td>
+                              <td rowSpan={totalRows} className="border border-slate-300 w-16 align-middle font-medium text-slate-700 bg-white">GROUP {gIndex + 1}</td>
                               <td className="border border-slate-300 w-12 bg-white">室温</td>
                               <td className="border border-slate-300 w-24 bg-white">采集器通道</td>
                               {[...Array(cols)].map((_, i) => (
@@ -1813,7 +1862,7 @@ function App() {
                               ))}
                             </tr>
                             <tr>
-                              <td rowSpan={3} className="border border-slate-300 bg-white"></td>
+                              <td rowSpan={totalRows - 1} className="border border-slate-300 bg-white"></td>
                               <td className="border border-slate-300 bg-white">器件</td>
                               {[...Array(cols)].map((_, i) => (
                                 <td key={`dev-${i}`} className="border border-slate-300 h-8 bg-white text-slate-700">
@@ -1834,20 +1883,52 @@ function App() {
                                 )
                               })}
                             </tr>
-                            {showMaxTemp && (
+                            {isComparing && (
                               <tr>
-                                <td className="border border-slate-300 bg-white font-medium">最高温度/℃</td>
+                                <td className="border border-slate-300 bg-white border-t-0 text-slate-500 text-[10px]">对比稳定温度/℃</td>
                                 {[...Array(cols)].map((_, i) => {
-                                  const tempStr = group[i]?.maxTemp;
+                                  const tempStr = group[i]?.compareTemp;
                                   const temp = (tempStr !== undefined && tempStr !== '') ? parseFloat(tempStr) : NaN;
                                   const bg = !isNaN(temp) ? getTempColorHex(temp) : '#ffffff';
                                   return (
-                                    <td key={`max-${i}`} className="border border-slate-300 h-8 text-slate-800 font-medium" style={{ backgroundColor: bg }}>
+                                    <td key={`comp-tmp-${i}`} className="border border-slate-300 border-t-0 border-dashed h-6 text-slate-500 text-[10px]" style={{ backgroundColor: bg }}>
                                       {!isNaN(temp) ? temp : ''}
                                     </td>
                                   )
                                 })}
                               </tr>
+                            )}
+                            {showMaxTemp && (
+                              <>
+                                <tr>
+                                  <td className="border border-slate-300 bg-white font-medium">最高温度/℃</td>
+                                  {[...Array(cols)].map((_, i) => {
+                                    const tempStr = group[i]?.maxTemp;
+                                    const temp = (tempStr !== undefined && tempStr !== '') ? parseFloat(tempStr) : NaN;
+                                    const bg = !isNaN(temp) ? getTempColorHex(temp) : '#ffffff';
+                                    return (
+                                      <td key={`max-${i}`} className="border border-slate-300 h-8 text-slate-800 font-medium" style={{ backgroundColor: bg }}>
+                                        {!isNaN(temp) ? temp : ''}
+                                      </td>
+                                    )
+                                  })}
+                                </tr>
+                                {isComparing && (
+                                  <tr>
+                                    <td className="border border-slate-300 bg-white border-t-0 text-slate-500 text-[10px] font-medium">对比最高温度/℃</td>
+                                    {[...Array(cols)].map((_, i) => {
+                                      const tempStr = group[i]?.compareMaxTemp;
+                                      const temp = (tempStr !== undefined && tempStr !== '') ? parseFloat(tempStr) : NaN;
+                                      const bg = !isNaN(temp) ? getTempColorHex(temp) : '#ffffff';
+                                      return (
+                                        <td key={`comp-max-${i}`} className="border border-slate-300 border-t-0 border-dashed h-6 text-slate-500 text-[10px] font-medium" style={{ backgroundColor: bg }}>
+                                          {!isNaN(temp) ? temp : ''}
+                                        </td>
+                                      )
+                                    })}
+                                  </tr>
+                                )}
+                              </>
                             )}
                             <tr>
                               <td colSpan={3} className="border border-slate-300 bg-white h-8">备注</td>
@@ -1955,6 +2036,12 @@ function App() {
                                 setCompareFullRawData([]);
                                 setIsComparing(false);
                                 setCompareFileName('');
+                                setChannels(prev => prev.map(ch => {
+                                  const newCh = { ...ch };
+                                  delete newCh.compareTemp;
+                                  delete newCh.compareMaxTemp;
+                                  return newCh;
+                                }));
                               }}
                               className="flex items-center gap-2 bg-white border border-red-200 text-red-500 px-4 py-2 rounded-xl text-sm font-medium hover:bg-red-50 transition-colors shadow-sm"
                             >
