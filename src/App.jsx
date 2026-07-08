@@ -50,6 +50,12 @@ function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [showMaxTemp, setShowMaxTemp] = useState(false);
   const [fullRawData, setFullRawData] = useState([]);
+  
+  const [compareFullRawData, setCompareFullRawData] = useState([]);
+  const [compareRawData, setCompareRawData] = useState([]);
+  const [compareFileName, setCompareFileName] = useState('');
+  const [isComparing, setIsComparing] = useState(false);
+  const compareInputRef = useRef(null);
 
   const recalculateChannelsFromData = (data) => {
     if (!data || data.length === 0) return;
@@ -84,10 +90,16 @@ function App() {
   };
 
   const handleResetData = () => {
-    if (!fullRawData.length) return;
     setRawData(fullRawData);
+    if (isComparing) {
+      setCompareRawData(compareFullRawData);
+    }
     recalculateChannelsFromData(fullRawData);
-    setZoomRange([0, fullRawData.length - 1]);
+    setZoomRange(fullRawData.length > 0 ? [0, fullRawData.length - 1] : null);
+    if (fullRawData.length > 0) {
+      setCropStartIndex(0);
+      setCropEndIndex(fullRawData.length - 1);
+    }
     setYDomain(['auto', 'auto']);
     showToast('已恢复全局数据');
   };
@@ -163,14 +175,20 @@ function App() {
 
   const handleCropExact = () => {
     if (cropStartIndex >= cropEndIndex) {
-      showToast('起始时间必须早于结束时间！', 'error');
+      showToast('起始时间不能晚于结束时间！', 'error');
       return;
     }
     const cropped = fullRawData.slice(cropStartIndex, cropEndIndex + 1);
     setRawData(cropped);
+    
+    if (isComparing && compareFullRawData.length > 0) {
+      const compareCropped = compareFullRawData.slice(cropStartIndex, cropEndIndex + 1);
+      setCompareRawData(compareCropped);
+    }
+    
     recalculateChannelsFromData(cropped);
     setZoomRange([0, cropped.length - 1]);
-    showToast('已截取选定时间段并重新计算温度');
+    showToast('已截取选定时间段记录数据');
   };
 
   useEffect(() => {
@@ -210,11 +228,34 @@ function App() {
     if (start >= end) return [];
     
     const slice = rawData.slice(start, end + 1);
+    const compareSlice = isComparing ? compareRawData.slice(start, end + 1) : [];
+    
     // Use 80 points limit to drastically reduce React rendering load when 72+ channels are shown
-    if (slice.length <= 80) return slice;
-    const step = Math.ceil(slice.length / 80);
-    return slice.filter((_, i) => i % step === 0 || i === slice.length - 1);
-  }, [rawData, zoomRange]);
+    let step = 1;
+    if (slice.length > 80) {
+      step = Math.ceil(slice.length / 80);
+    }
+    
+    const result = [];
+    for (let i = 0; i < slice.length; i += step) {
+      // make sure last point is included if it wasn't
+      const isLast = (i + step >= slice.length);
+      const actualIdx = isLast ? slice.length - 1 : i;
+      
+      const point = { ...slice[actualIdx] };
+      if (isComparing && compareSlice[actualIdx]) {
+        const cp = compareSlice[actualIdx];
+        Object.keys(cp).forEach(key => {
+          if (key.startsWith('CH')) {
+            point[`compare_${key}`] = cp[key];
+          }
+        });
+      }
+      result.push(point);
+      if (isLast) break;
+    }
+    return result;
+  }, [rawData, zoomRange, isComparing, compareRawData]);
 
   const chartDataRef = useRef(chartData);
   const chartSelectedIdsRef = useRef(chartSelectedIds);
@@ -528,12 +569,16 @@ function App() {
     });
   }, [channels]);
 
-  const handleFileUpload = async (e) => {
+  const handleFileUpload = async (e, isCompare = false) => {
     const file = e.target.files[0];
     if (!file) return;
     
     setIsImporting(true);
-    setImportedFileName(file.name);
+    if (isCompare) {
+      setCompareFileName(file.name);
+    } else {
+      setImportedFileName(file.name);
+    }
     try {
       const workbook = new ExcelJS.Workbook();
       let sheetToParse = null;
@@ -846,13 +891,25 @@ function App() {
         setConfig(prev => ({ ...prev, bottomNote: calculateMaxTemps(finalChannels) }));
       }
 
-      setChannels(finalChannels);
-      setChartSelectedIds(new Set(finalChannels.map(c => c.id)));
-      setRawData(newRawData);
-      setFullRawData(newRawData);
-      
-      showToast(`数据导入成功！共识别到 ${Object.keys(maxTemps).length} 个有效通道。`, 'success');
-    } catch (err) {
+      if (isCompare) {
+        setCompareRawData(newRawData);
+        setCompareFullRawData(newRawData);
+        setIsComparing(true);
+        showToast(`对比数据成功导入`, 'success');
+      } else {
+        setChannels(finalChannels);
+        setChartSelectedIds(new Set(finalChannels.map(c => c.id)));
+        setRawData(newRawData);
+        setFullRawData(newRawData);
+        
+        // Clear compare data when main data changes
+        setCompareRawData([]);
+        setCompareFullRawData([]);
+        setIsComparing(false);
+        setCompareFileName('');
+        
+        showToast(`数据导入成功！共识别到 ${Object.keys(maxTemps).length} 个有效通道。`, 'success');
+      }
       console.error(err);
       showToast('导入失败，请确保文件格式正确。', 'error');
     } finally {
@@ -869,6 +926,10 @@ function App() {
         setChannels([]);
         setRawData([]);
         setFullRawData([]);
+        setCompareRawData([]);
+        setCompareFullRawData([]);
+        setIsComparing(false);
+        setCompareFileName('');
         setChartSelectedIds(new Set());
         setSelectedIds(new Set());
         setImportedFileName('');
@@ -1504,15 +1565,43 @@ function App() {
               >
                 <Trash2 size={18} /> 清除数据
               </button>
-              <input type="file" accept=".xlsx, .xls, .csv" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+              <input type="file" accept=".xlsx, .xls, .csv" ref={fileInputRef} className="hidden" onChange={(e) => handleFileUpload(e, false)} />
               <button 
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isImporting}
                 className="flex items-center gap-2 bg-white border border-blue-200 text-blue-600 px-5 py-2.5 rounded-full font-medium hover:bg-blue-50 transition-colors shadow-sm disabled:opacity-50 active:scale-95"
               >
                 <UploadCloud size={18} />
-                {isImporting ? '解析中...' : '导入数据'}
+                {isImporting ? '导入中...' : '导入数据'}
               </button>
+              
+              {channels.length > 0 && (
+                <>
+                  <input type="file" accept=".xlsx, .xls, .csv" ref={compareInputRef} className="hidden" onChange={(e) => handleFileUpload(e, true)} />
+                  <button 
+                    onClick={() => compareInputRef.current?.click()}
+                    disabled={isImporting}
+                    className="flex items-center gap-2 bg-white border border-amber-200 text-amber-600 px-5 py-2.5 rounded-full font-medium hover:bg-amber-50 transition-colors shadow-sm disabled:opacity-50 active:scale-95"
+                    title={compareFileName ? `当前对比: ${compareFileName}` : ''}
+                  >
+                    <UploadCloud size={18} />
+                    {isImporting ? '导入中...' : (isComparing ? '重新导入对比' : '导入对比数据')}
+                  </button>
+                  {isComparing && (
+                    <button
+                      onClick={() => {
+                        setCompareRawData([]);
+                        setCompareFullRawData([]);
+                        setIsComparing(false);
+                        setCompareFileName('');
+                      }}
+                      className="flex items-center gap-2 bg-white border border-red-200 text-red-500 px-5 py-2.5 rounded-full font-medium hover:bg-red-50 transition-colors shadow-sm active:scale-95"
+                    >
+                      <Trash2 size={18} /> 清除对比
+                    </button>
+                  )}
+                </>
+              )}
               
               {exportDirName && (
                 <div className="text-sm text-slate-500 flex items-center gap-1.5 bg-white border border-slate-200 px-3 py-1.5 rounded-full shadow-sm" title={exportDirName}>
@@ -1847,6 +1936,33 @@ function App() {
                         <UploadCloud size={16} />
                         {isImporting ? '解析中...' : '导入数据'}
                       </button>
+                      
+                      {channels.length > 0 && (
+                        <>
+                          <button 
+                            onClick={() => compareInputRef.current?.click()}
+                            disabled={isImporting}
+                            className="flex items-center gap-2 bg-white border border-amber-200 text-amber-600 px-4 py-2 rounded-xl text-sm font-medium hover:bg-amber-50 transition-colors shadow-sm disabled:opacity-50"
+                            title={compareFileName ? `当前对比: ${compareFileName}` : ''}
+                          >
+                            <UploadCloud size={16} />
+                            {isImporting ? '解析中...' : (isComparing ? '重新导入对比' : '导入对比数据')}
+                          </button>
+                          {isComparing && (
+                            <button
+                              onClick={() => {
+                                setCompareRawData([]);
+                                setCompareFullRawData([]);
+                                setIsComparing(false);
+                                setCompareFileName('');
+                              }}
+                              className="flex items-center gap-2 bg-white border border-red-200 text-red-500 px-4 py-2 rounded-xl text-sm font-medium hover:bg-red-50 transition-colors shadow-sm"
+                            >
+                              <Trash2 size={16} /> 清除对比
+                            </button>
+                          )}
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1982,7 +2098,14 @@ function App() {
                             if (!ch) return null;
                             const name = ch.name ? `${ch.name} (CH${id})` : `CH${id}`;
                             const hue = (id * 137.5) % 360;
-                            return <Line isAnimationActive={false} key={id} type="monotone" dataKey={`CH${id}`} name={name} stroke={`hsl(${hue}, 70%, 50%)`} dot={false} strokeWidth={2} />;
+                            return (
+                              <React.Fragment key={id}>
+                                <Line isAnimationActive={false} type="monotone" dataKey={`CH${id}`} name={name} stroke={`hsl(${hue}, 70%, 50%)`} dot={false} strokeWidth={2} />
+                                {isComparing && (
+                                  <Line isAnimationActive={false} type="monotone" dataKey={`compare_CH${id}`} name={`${name} (对比)`} stroke={`hsl(${hue}, 70%, 50%)`} strokeDasharray="5 5" dot={false} strokeWidth={2} strokeOpacity={0.5} />
+                                )}
+                              </React.Fragment>
+                            );
                         })}
                       </LineChart>
                     </ResponsiveContainer>
