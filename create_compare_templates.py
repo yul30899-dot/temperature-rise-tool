@@ -36,7 +36,7 @@ def create_template(max_rows):
     chart1.add_data(data_ref, titles_from_data=True)
     chart1.set_categories(cats_ref)
     
-    ws_summary.add_chart(chart1, "A1")
+    ws_summary.add_chart(chart1, "Q32")
     
     # Chart 2: Compare Data
     chart2 = LineChart()
