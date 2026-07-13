@@ -1122,11 +1122,13 @@ function App() {
 
           const prefixMatch = xml.match(/<(c:)?ser>/);
           const p = prefixMatch && prefixMatch[1] ? 'c:' : '';
+          const rawMaxRow = Math.max(1, rawLen) + 1;
+          const safeRawLen = Math.max(1, rawLen);
 
           let serNodes = '';
           channels.forEach((ch, idx) => {
               const colLetter = getColName(idx + 2);
-              serNodes += `<${p}ser><${p}idx val="${idx}"/><${p}order val="${idx}"/><${p}tx><${p}strRef><${p}f>原始数据!$${colLetter}$1</${p}f><${p}strCache><${p}ptCount val="1"/><${p}pt idx="0"><${p}v>CH${ch.id}</${p}v></${p}pt></${p}strCache></${p}strRef></${p}tx><${p}spPr><a:ln w="28575" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/></${p}spPr><${p}marker><${p}symbol val="none"/></${p}marker><${p}cat><${p}numRef><${p}f>原始数据!$A$2:$A$${maxRows}</${p}f><${p}numCache><${p}formatCode>General</${p}formatCode><${p}ptCount val="${maxRows-1}"/></${p}numCache></${p}numRef></${p}cat><${p}val><${p}numRef><${p}f>原始数据!$${colLetter}$2:$${colLetter}$${maxRows}</${p}f><${p}numCache><${p}formatCode>General</${p}formatCode><${p}ptCount val="${maxRows-1}"/></${p}numCache></${p}numRef></${p}val><${p}smooth val="1"/></${p}ser>`;
+              serNodes += `<${p}ser><${p}idx val="${idx}"/><${p}order val="${idx}"/><${p}tx><${p}strRef><${p}f>原始数据!$${colLetter}$1</${p}f><${p}strCache><${p}ptCount val="1"/><${p}pt idx="0"><${p}v>CH${ch.id}</${p}v></${p}pt></${p}strCache></${p}strRef></${p}tx><${p}spPr><a:ln w="28575" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/></${p}spPr><${p}marker><${p}symbol val="none"/></${p}marker><${p}cat><${p}numRef><${p}f>原始数据!$A$2:$A$${rawMaxRow}</${p}f><${p}numCache><${p}formatCode>General</${p}formatCode><${p}ptCount val="${safeRawLen}"/></${p}numCache></${p}numRef></${p}cat><${p}val><${p}numRef><${p}f>原始数据!$${colLetter}$2:$${colLetter}$${rawMaxRow}</${p}f><${p}numCache><${p}formatCode>General</${p}formatCode><${p}ptCount val="${safeRawLen}"/></${p}numCache></${p}numRef></${p}val><${p}smooth val="1"/></${p}ser>`;
           });
 
           xml = xml.replace(new RegExp(`<${p}ser>[\\s\\S]*?<\\/${p}ser>`, 'g'), '');
@@ -1139,10 +1141,12 @@ function App() {
               let xml2 = await chartFile2.async('string');
               const prefixMatch2 = xml2.match(/<(c:)?ser>/);
               const p2 = prefixMatch2 && prefixMatch2[1] ? 'c:' : '';
+              const compMaxRow = Math.max(1, compLen) + 1;
+              const safeCompLen = Math.max(1, compLen);
               let serNodes2 = '';
               channels.forEach((ch, idx) => {
                   const colLetter = getColName(idx + 2);
-                  serNodes2 += `<${p2}ser><${p2}idx val="${idx}"/><${p2}order val="${idx}"/><${p2}tx><${p2}strRef><${p2}f>对比原始数据!$${colLetter}$1</${p2}f><${p2}strCache><${p2}ptCount val="1"/><${p2}pt idx="0"><${p2}v>CH${ch.id}</${p2}v></${p2}pt></${p2}strCache></${p2}strRef></${p2}tx><${p2}spPr><a:ln w="28575" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/></${p2}spPr><${p2}marker><${p2}symbol val="none"/></${p2}marker><${p2}cat><${p2}numRef><${p2}f>对比原始数据!$A$2:$A$${maxRows}</${p2}f><${p2}numCache><${p2}formatCode>General</${p2}formatCode><${p2}ptCount val="${maxRows-1}"/></${p2}numCache></${p2}numRef></${p2}cat><${p2}val><${p2}numRef><${p2}f>对比原始数据!$${colLetter}$2:$${colLetter}$${maxRows}</${p2}f><${p2}numCache><${p2}formatCode>General</${p2}formatCode><${p2}ptCount val="${maxRows-1}"/></${p2}numCache></${p2}numRef></${p2}val><${p2}smooth val="1"/></${p2}ser>`;
+                  serNodes2 += `<${p2}ser><${p2}idx val="${idx}"/><${p2}order val="${idx}"/><${p2}tx><${p2}strRef><${p2}f>对比原始数据!$${colLetter}$1</${p2}f><${p2}strCache><${p2}ptCount val="1"/><${p2}pt idx="0"><${p2}v>CH${ch.id}</${p2}v></${p2}pt></${p2}strCache></${p2}strRef></${p2}tx><${p2}spPr><a:ln w="28575" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/></${p2}spPr><${p2}marker><${p2}symbol val="none"/></${p2}marker><${p2}cat><${p2}numRef><${p2}f>对比原始数据!$A$2:$A$${compMaxRow}</${p2}f><${p2}numCache><${p2}formatCode>General</${p2}formatCode><${p2}ptCount val="${safeCompLen}"/></${p2}numCache></${p2}numRef></${p2}cat><${p2}val><${p2}numRef><${p2}f>对比原始数据!$${colLetter}$2:$${colLetter}$${compMaxRow}</${p2}f><${p2}numCache><${p2}formatCode>General</${p2}formatCode><${p2}ptCount val="${safeCompLen}"/></${p2}numCache></${p2}numRef></${p2}val><${p2}smooth val="1"/></${p2}ser>`;
               });
               xml2 = xml2.replace(new RegExp(`<${p2}ser>[\\s\\S]*?<\\/${p2}ser>`, 'g'), '');
               xml2 = xml2.replace(new RegExp(`(<${p2}marker val="1"\\/>|<${p2}axId)`), (match) => serNodes2 + match);
