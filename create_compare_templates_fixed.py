@@ -43,6 +43,9 @@ def process(size):
     xml1 = orig_chart1_xml.replace(u"<a:t>温升曲线图</a:t>", u"<a:t>温升曲线图 (当前测试数据)</a:t>")
     # Chart2: History Data
     xml2 = orig_chart1_xml.replace(u"<a:t>温升曲线图</a:t>", u"<a:t>温升曲线图 (历史对比数据)</a:t>")
+    # Must replace axIds to avoid clash with chart1!
+    xml2 = xml2.replace('"50010001"', '"50020001"')
+    xml2 = xml2.replace('"50010002"', '"50020002"')
     
     with zipfile.ZipFile(temp_file, 'r') as zin:
         with zipfile.ZipFile(final_file, 'w') as zout:
