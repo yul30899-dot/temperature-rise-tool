@@ -1087,7 +1087,7 @@ function App() {
         exportBaseName = `温升数据报告_${dateStr}`;
       }
       const rawLen = rawData ? rawData.length : 0;
-      const compLen = (isComparing && compareData) ? compareData.length : 0;
+      const compLen = (isComparing && compareRawData) ? compareRawData.length : 0;
       const dataLen = Math.max(rawLen, compLen);
       let templateName = isComparing ? './chart_template_compare_200.xlsx' : './chart_template_200.xlsx';
       if (dataLen > 3000) templateName = isComparing ? './chart_template_compare_5000.xlsx' : './chart_template_5000.xlsx';
@@ -1183,7 +1183,7 @@ function App() {
         for (let index = 0; index < dataLen; index++) {
           const row = index + 2;
           const rData = (rawData && index < rawData.length) ? rawData[index] : null;
-          const cData = (isComparing && compareData && index < compareData.length) ? compareData[index] : null;
+          const cData = (isComparing && compareRawData && index < compareRawData.length) ? compareRawData[index] : null;
           
           if (rData) {
             dataSheet.cell(row, 1).value(rData.originalTime || rData.time);
