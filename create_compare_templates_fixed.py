@@ -43,6 +43,16 @@ def create_dual_chart_template(size):
                     new_rel = '<Relationship Id="rId6" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>'
                     xml = xml.replace('</Relationships>', new_rel + '</Relationships>')
                     zout.writestr(item, xml.encode('utf-8'))
+                    
+                elif item.filename == 'docProps/app.xml':
+                    xml = content.decode('utf-8')
+                    # change <vt:i4>2</vt:i4> to 3
+                    xml = re.sub(r'<vt:i4>2</vt:i4>', '<vt:i4>3</vt:i4>', xml)
+                    # change size="2" to size="3" in TitlesOfParts
+                    xml = re.sub(r'<TitlesOfParts><vt:vector size="2"', '<TitlesOfParts><vt:vector size="3"', xml)
+                    # add sheet name
+                    xml = xml.replace('</vt:vector></TitlesOfParts>', '<vt:lpstr>对比原始数据</vt:lpstr></vt:vector></TitlesOfParts>')
+                    zout.writestr(item, xml.encode('utf-8'))
                 
                 elif item.filename == 'xl/drawings/drawing1.xml':
                     # duplicate the anchor
