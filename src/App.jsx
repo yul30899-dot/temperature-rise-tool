@@ -1087,12 +1087,12 @@ function App() {
         exportBaseName = `温升数据报告_${dateStr}`;
       }
       const dataLen = rawData ? rawData.length : 0;
-      let templateName = './chart_template_200.xlsx';
-      if (dataLen > 3000) templateName = './chart_template_5000.xlsx';
-      else if (dataLen > 2000) templateName = './chart_template_3000.xlsx';
-      else if (dataLen > 1000) templateName = './chart_template_2000.xlsx';
-      else if (dataLen > 500) templateName = './chart_template_1000.xlsx';
-      else if (dataLen > 200) templateName = './chart_template_500.xlsx';
+      let templateName = isComparing ? './chart_template_compare_200.xlsx' : './chart_template_200.xlsx';
+      if (dataLen > 3000) templateName = isComparing ? './chart_template_compare_5000.xlsx' : './chart_template_5000.xlsx';
+      else if (dataLen > 2000) templateName = isComparing ? './chart_template_compare_3000.xlsx' : './chart_template_3000.xlsx';
+      else if (dataLen > 1000) templateName = isComparing ? './chart_template_compare_2000.xlsx' : './chart_template_2000.xlsx';
+      else if (dataLen > 500) templateName = isComparing ? './chart_template_compare_1000.xlsx' : './chart_template_1000.xlsx';
+      else if (dataLen > 200) templateName = isComparing ? './chart_template_compare_500.xlsx' : './chart_template_500.xlsx';
       
       const response = await fetch(templateName);
       if (!response.ok) throw new Error('无法加载模板文件');
@@ -1129,6 +1129,21 @@ function App() {
           xml = xml.replace(/(<c:marker val="1"\/>|<c:axId)/, (match) => serNodes + match);
           zip.file('xl/charts/chart1.xml', xml);
           
+          if (isComparing) {
+            const chartFile2 = zip.file('xl/charts/chart2.xml');
+            if (chartFile2) {
+              let xml2 = await chartFile2.async('string');
+              let serNodes2 = '';
+              channels.forEach((ch, idx) => {
+                  const colLetter = getColName(idx + 203);
+                  serNodes2 += `<c:ser><c:idx val="${idx}"/><c:order val="${idx}"/><c:tx><c:strRef><c:f>原始数据!$${colLetter}$1</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>CH${ch.id}</c:v></c:pt></c:strCache></c:strRef></c:tx><c:spPr><a:ln w="28575"/></c:spPr><c:marker><c:symbol val="none"/></c:marker><c:cat><c:numRef><c:f>原始数据!$A$2:$A$${maxRows}</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${maxRows-1}"/></c:numCache></c:numRef></c:cat><c:val><c:numRef><c:f>原始数据!$${colLetter}$2:$${colLetter}$${maxRows}</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${maxRows-1}"/></c:numCache></c:numRef></c:val><c:smooth val="1"/></c:ser>`;
+              });
+              xml2 = xml2.replace(/<c:ser>[\s\S]*?<\/c:ser>/g, '');
+              xml2 = xml2.replace(/(<c:marker val="1"\/>|<c:axId)/, (match) => serNodes2 + match);
+              zip.file('xl/charts/chart2.xml', xml2);
+            }
+          }
+
           arrayBuffer = await zip.generateAsync({ type: 'arraybuffer' });
         }
       } catch (err) {
@@ -1150,6 +1165,9 @@ function App() {
       channels.forEach((ch, idx) => {
         const name = ch.name ? `CH${ch.id} ${ch.name}` : `CH${ch.id}`;
         dataSheet.cell(1, idx + 2).value(name);
+        if (isComparing) {
+            dataSheet.cell(1, idx + 203).value(name);
+        }
       });
 
       if (rawData && rawData.length > 0) {
@@ -1164,6 +1182,12 @@ function App() {
             const val = data[`CH${ch.id}`];
             if (val !== undefined) {
               dataSheet.cell(row, idx + 2).value(val);
+            }
+            if (isComparing) {
+               const cpVal = data[`compare_CH${ch.id}`];
+               if (cpVal !== undefined) {
+                   dataSheet.cell(row, idx + 203).value(cpVal);
+               }
             }
           });
         });
@@ -1277,13 +1301,16 @@ function App() {
         return `${toHex(r)}${toHex(g)}${toHex(b)}`;
       };
 
-      const validTemps = channels.flatMap(ch => [parseFloat(ch.temp), parseFloat(ch.maxTemp)]).filter(val => !isNaN(val));
+      const validTemps = channels.flatMap(ch => [parseFloat(ch.temp), parseFloat(ch.maxTemp), parseFloat(ch.compareTemp), parseFloat(ch.compareMaxTemp)]).filter(val => !isNaN(val));
       const globalMin = validTemps.length > 0 ? Math.min(...validTemps) : 0;
       const globalMax = validTemps.length > 0 ? Math.max(...validTemps) : 100;
 
-      let startRow = 7;
+            let startRow = 7;
       chunkedChannels.forEach((groupChannels, gIndex) => {
-        const rowsCount = showMaxTemp ? 4 : 3;
+        let rowsCount = showMaxTemp ? 4 : 3;
+        if (isComparing) {
+            rowsCount += showMaxTemp ? 2 : 1;
+        }
         sheet.range(`A${startRow}:A${startRow + rowsCount - 1}`).merged(true);
         sheet.cell(`A${startRow}`).value(`GROUP ${gIndex + 1}`).style({ horizontalAlignment: 'center', verticalAlignment: 'center' });
         
@@ -1299,29 +1326,61 @@ function App() {
           sheet.cell(startRow + 1, 4 + idx).value(ch.name);
         });
 
-        sheet.cell(`C${startRow + 2}`).value('稳定温度/℃');
+        let currentRow = startRow + 2;
+        sheet.cell(`C${currentRow}`).value('稳定温度/℃');
         groupChannels.forEach((ch, idx) => {
           const val = ch.temp ? parseFloat(ch.temp) : '';
-          const cell = sheet.cell(startRow + 2, 4 + idx);
+          const cell = sheet.cell(currentRow, 4 + idx);
           cell.value(val);
           if (val !== '') {
               const hexColor = getTempColorHex(val, globalMin, globalMax);
               cell.style('fill', hexColor);
           }
         });
+        currentRow++;
 
-        if (showMaxTemp) {
-          sheet.cell(`C${startRow + 3}`).value('最高温度/℃');
+        if (isComparing) {
+          sheet.cell(`C${currentRow}`).value('对比稳定温度/℃');
           groupChannels.forEach((ch, idx) => {
-            const val = ch.maxTemp ? parseFloat(ch.maxTemp) : '';
-            const cell = sheet.cell(startRow + 3, 4 + idx);
+            const val = ch.compareTemp ? parseFloat(ch.compareTemp) : '';
+            const cell = sheet.cell(currentRow, 4 + idx);
             cell.value(val);
             if (val !== '') {
                 const hexColor = getTempColorHex(val, globalMin, globalMax);
                 cell.style('fill', hexColor);
             }
           });
+          currentRow++;
         }
+
+        if (showMaxTemp) {
+          sheet.cell(`C${currentRow}`).value('最高温度/℃');
+          groupChannels.forEach((ch, idx) => {
+            const val = ch.maxTemp ? parseFloat(ch.maxTemp) : '';
+            const cell = sheet.cell(currentRow, 4 + idx);
+            cell.value(val);
+            if (val !== '') {
+                const hexColor = getTempColorHex(val, globalMin, globalMax);
+                cell.style('fill', hexColor);
+            }
+          });
+          currentRow++;
+
+          if (isComparing) {
+            sheet.cell(`C${currentRow}`).value('对比最高温度/℃');
+            groupChannels.forEach((ch, idx) => {
+              const val = ch.compareMaxTemp ? parseFloat(ch.compareMaxTemp) : '';
+              const cell = sheet.cell(currentRow, 4 + idx);
+              cell.value(val);
+              if (val !== '') {
+                  const hexColor = getTempColorHex(val, globalMin, globalMax);
+                  cell.style('fill', hexColor);
+              }
+            });
+            currentRow++;
+          }
+        }
+
 
         const noteRow = startRow + rowsCount;
         sheet.range(`A${noteRow}:C${noteRow}`).merged(true);
@@ -1552,7 +1611,7 @@ function App() {
     </div>
   );
 
-  const validTemps = channels.flatMap(ch => [parseFloat(ch.temp), parseFloat(ch.maxTemp)]).filter(val => !isNaN(val));
+  const validTemps = channels.flatMap(ch => [parseFloat(ch.temp), parseFloat(ch.maxTemp), parseFloat(ch.compareTemp), parseFloat(ch.compareMaxTemp)]).filter(val => !isNaN(val));
   const globalMin = validTemps.length > 0 ? Math.min(...validTemps) : 0;
   const globalMax = validTemps.length > 0 ? Math.max(...validTemps) : 100;
   
@@ -1852,35 +1911,35 @@ function App() {
                         const cols = Math.max(8, group.length);
                         const totalRows = 4 + (isComparing ? 1 : 0) + (showMaxTemp ? (isComparing ? 2 : 1) : 0);
                         return (
-                        <table key={gIndex} className="w-full text-xs text-center border-collapse border border-slate-300 mb-6 bg-white last:mb-0 min-w-max">
+                        <table key={gIndex} className="w-full text-xs text-center border-collapse border-2 border-slate-400 mb-6 bg-white last:mb-0 min-w-max">
                           <tbody>
                             <tr>
-                              <td rowSpan={totalRows} className="border border-slate-300 w-16 align-middle font-medium text-slate-700 bg-white">GROUP {gIndex + 1}</td>
-                              <td className="border border-slate-300 w-12 bg-white">室温</td>
-                              <td className="border border-slate-300 w-24 bg-white">采集器通道</td>
+                              <td rowSpan={totalRows} className="border border-slate-400 w-16 align-middle font-medium text-slate-700 bg-white">GROUP {gIndex + 1}</td>
+                              <td className="border border-slate-400 w-12 bg-white">室温</td>
+                              <td className="border border-slate-400 w-24 bg-white">采集器通道</td>
                               {[...Array(cols)].map((_, i) => (
-                                <td key={`ch-${i}`} className="border border-slate-300 h-8 bg-white text-slate-700 min-w-[60px]">
+                                <td key={`ch-${i}`} className="border border-slate-400 h-8 bg-white text-slate-700 min-w-[60px]">
                                   {group[i] ? `CH${group[i].id}` : ''}
                                 </td>
                               ))}
                             </tr>
                             <tr>
-                              <td rowSpan={totalRows - 1} className="border border-slate-300 bg-white"></td>
-                              <td className="border border-slate-300 bg-white">器件</td>
+                              <td rowSpan={totalRows - 1} className="border border-slate-400 bg-white"></td>
+                              <td className="border border-slate-400 bg-white">器件</td>
                               {[...Array(cols)].map((_, i) => (
-                                <td key={`dev-${i}`} className="border border-slate-300 h-8 bg-white text-slate-700">
+                                <td key={`dev-${i}`} className="border border-slate-400 h-8 bg-white text-slate-700">
                                   {group[i]?.name || ''}
                                 </td>
                               ))}
                             </tr>
                             <tr>
-                              <td className="border border-slate-300 bg-white">稳定温度/℃</td>
+                              <td className="border border-slate-400 bg-white">稳定温度/℃</td>
                               {[...Array(cols)].map((_, i) => {
                                 const tempStr = group[i]?.temp;
                                 const temp = (tempStr !== undefined && tempStr !== '') ? parseFloat(tempStr) : NaN;
                                 const bg = !isNaN(temp) ? getTempColorHex(temp) : '#ffffff';
                                 return (
-                                  <td key={`tmp-${i}`} className="border border-slate-300 h-8 text-slate-800" style={{ backgroundColor: bg }}>
+                                  <td key={`tmp-${i}`} className="border border-slate-400 h-8 text-slate-800" style={{ backgroundColor: bg }}>
                                     {!isNaN(temp) ? temp : ''}
                                   </td>
                                 )
@@ -1888,13 +1947,13 @@ function App() {
                             </tr>
                             {isComparing && (
                               <tr>
-                                <td className="border border-slate-300 bg-white border-t-0 text-slate-500 text-[10px]">对比稳定温度/℃</td>
+                                <td className="border border-slate-400 bg-white border-t-0 text-slate-500 text-[10px]">对比稳定温度/℃</td>
                                 {[...Array(cols)].map((_, i) => {
                                   const tempStr = group[i]?.compareTemp;
                                   const temp = (tempStr !== undefined && tempStr !== '') ? parseFloat(tempStr) : NaN;
                                   const bg = !isNaN(temp) ? getTempColorHex(temp) : '#ffffff';
                                   return (
-                                    <td key={`comp-tmp-${i}`} className="border border-slate-300 border-t-0 border-dashed h-6 text-slate-500 text-[10px]" style={{ backgroundColor: bg }}>
+                                    <td key={`comp-tmp-${i}`} className="border border-slate-400 border-t-0 border-dashed h-6 text-slate-500 text-[10px]" style={{ backgroundColor: bg }}>
                                       {!isNaN(temp) ? temp : ''}
                                     </td>
                                   )
@@ -1904,13 +1963,13 @@ function App() {
                             {showMaxTemp && (
                               <>
                                 <tr>
-                                  <td className="border border-slate-300 bg-white font-medium">最高温度/℃</td>
+                                  <td className="border border-slate-400 bg-white font-medium">最高温度/℃</td>
                                   {[...Array(cols)].map((_, i) => {
                                     const tempStr = group[i]?.maxTemp;
                                     const temp = (tempStr !== undefined && tempStr !== '') ? parseFloat(tempStr) : NaN;
                                     const bg = !isNaN(temp) ? getTempColorHex(temp) : '#ffffff';
                                     return (
-                                      <td key={`max-${i}`} className="border border-slate-300 h-8 text-slate-800 font-medium" style={{ backgroundColor: bg }}>
+                                      <td key={`max-${i}`} className="border border-slate-400 h-8 text-slate-800 font-medium" style={{ backgroundColor: bg }}>
                                         {!isNaN(temp) ? temp : ''}
                                       </td>
                                     )
@@ -1918,13 +1977,13 @@ function App() {
                                 </tr>
                                 {isComparing && (
                                   <tr>
-                                    <td className="border border-slate-300 bg-white border-t-0 text-slate-500 text-[10px] font-medium">对比最高温度/℃</td>
+                                    <td className="border border-slate-400 bg-white border-t-0 text-slate-500 text-[10px] font-medium">对比最高温度/℃</td>
                                     {[...Array(cols)].map((_, i) => {
                                       const tempStr = group[i]?.compareMaxTemp;
                                       const temp = (tempStr !== undefined && tempStr !== '') ? parseFloat(tempStr) : NaN;
                                       const bg = !isNaN(temp) ? getTempColorHex(temp) : '#ffffff';
                                       return (
-                                        <td key={`comp-max-${i}`} className="border border-slate-300 border-t-0 border-dashed h-6 text-slate-500 text-[10px] font-medium" style={{ backgroundColor: bg }}>
+                                        <td key={`comp-max-${i}`} className="border border-slate-400 border-t-0 border-dashed h-6 text-slate-500 text-[10px] font-medium" style={{ backgroundColor: bg }}>
                                           {!isNaN(temp) ? temp : ''}
                                         </td>
                                       )
@@ -1934,8 +1993,8 @@ function App() {
                               </>
                             )}
                             <tr>
-                              <td colSpan={3} className="border border-slate-300 bg-white h-8">备注</td>
-                              <td colSpan={cols} className="border border-slate-300 bg-white text-left px-3 text-slate-600">
+                              <td colSpan={3} className="border border-slate-400 bg-white h-8">备注</td>
+                              <td colSpan={cols} className="border border-slate-400 bg-white text-left px-3 text-slate-600">
                                 {groupNotes[gIndex] || ''}
                               </td>
                             </tr>
