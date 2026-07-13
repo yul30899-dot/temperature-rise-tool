@@ -1096,7 +1096,7 @@ function App() {
       else if (dataLen > 500) templateName = isComparing ? './chart_template_compare_1000.xlsx' : './chart_template_1000.xlsx';
       else if (dataLen > 200) templateName = isComparing ? './chart_template_compare_500.xlsx' : './chart_template_500.xlsx';
       
-      const response = await fetch(templateName);
+      const response = await fetch(templateName + '?v=' + Date.now());
       if (!response.ok) throw new Error('无法加载模板文件');
       let arrayBuffer = await response.arrayBuffer();
 
