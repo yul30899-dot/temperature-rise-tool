@@ -1101,7 +1101,7 @@ function App() {
       const maxRowsMatch = templateName.match(/_(\d+)\.xlsx/);
       const maxRows = maxRowsMatch ? parseInt(maxRowsMatch[1]) : 200;
 
-      // --- DYNAMICALLY REBUILD CHART SERIES USING JSZip ---
+            // --- DYNAMICALLY REBUILD CHART SERIES USING JSZip ---
       try {
         const zip = await JSZip.loadAsync(arrayBuffer);
         const chartFile = zip.file('xl/charts/chart1.xml');
@@ -1118,28 +1118,32 @@ function App() {
               return letter;
           }
 
+          const prefixMatch = xml.match(/<(c:)?ser>/);
+          const p = prefixMatch && prefixMatch[1] ? 'c:' : '';
+
           let serNodes = '';
           channels.forEach((ch, idx) => {
-              // Col B is 2
               const colLetter = getColName(idx + 2);
-              serNodes += `<c:ser><c:idx val="${idx}"/><c:order val="${idx}"/><c:tx><c:strRef><c:f>原始数据!$${colLetter}$1</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>CH${ch.id}</c:v></c:pt></c:strCache></c:strRef></c:tx><c:spPr><a:ln w="28575"/></c:spPr><c:marker><c:symbol val="none"/></c:marker><c:cat><c:numRef><c:f>原始数据!$A$2:$A$${maxRows}</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${maxRows-1}"/></c:numCache></c:numRef></c:cat><c:val><c:numRef><c:f>原始数据!$${colLetter}$2:$${colLetter}$${maxRows}</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${maxRows-1}"/></c:numCache></c:numRef></c:val><c:smooth val="1"/></c:ser>`;
+              serNodes += `<${p}ser><${p}idx val="${idx}"/><${p}order val="${idx}"/><${p}tx><${p}strRef><${p}f>原始数据!$${colLetter}$1</${p}f><${p}strCache><${p}ptCount val="1"/><${p}pt idx="0"><${p}v>CH${ch.id}</${p}v></${p}pt></${p}strCache></${p}strRef></${p}tx><${p}spPr><a:ln w="28575"/></${p}spPr><${p}marker><${p}symbol val="none"/></${p}marker><${p}cat><${p}numRef><${p}f>原始数据!$A$2:$A$${maxRows}</${p}f><${p}numCache><${p}formatCode>General</${p}formatCode><${p}ptCount val="${maxRows-1}"/></${p}numCache></${p}numRef></${p}cat><${p}val><${p}numRef><${p}f>原始数据!$${colLetter}$2:$${colLetter}$${maxRows}</${p}f><${p}numCache><${p}formatCode>General</${p}formatCode><${p}ptCount val="${maxRows-1}"/></${p}numCache></${p}numRef></${p}val><${p}smooth val="1"/></${p}ser>`;
           });
 
-          xml = xml.replace(/<c:ser>[\s\S]*?<\/c:ser>/g, '');
-          xml = xml.replace(/(<c:marker val="1"\/>|<c:axId)/, (match) => serNodes + match);
+          xml = xml.replace(new RegExp(`<${p}ser>[\s\S]*?<\/${p}ser>`, 'g'), '');
+          xml = xml.replace(new RegExp(`(<${p}marker val="1"\/>|<${p}axId)`), (match) => serNodes + match);
           zip.file('xl/charts/chart1.xml', xml);
           
           if (isComparing) {
             const chartFile2 = zip.file('xl/charts/chart2.xml');
             if (chartFile2) {
               let xml2 = await chartFile2.async('string');
+              const prefixMatch2 = xml2.match(/<(c:)?ser>/);
+              const p2 = prefixMatch2 && prefixMatch2[1] ? 'c:' : '';
               let serNodes2 = '';
               channels.forEach((ch, idx) => {
                   const colLetter = getColName(idx + 203);
-                  serNodes2 += `<c:ser><c:idx val="${idx}"/><c:order val="${idx}"/><c:tx><c:strRef><c:f>原始数据!$${colLetter}$1</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>CH${ch.id}</c:v></c:pt></c:strCache></c:strRef></c:tx><c:spPr><a:ln w="28575"/></c:spPr><c:marker><c:symbol val="none"/></c:marker><c:cat><c:numRef><c:f>原始数据!$A$2:$A$${maxRows}</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${maxRows-1}"/></c:numCache></c:numRef></c:cat><c:val><c:numRef><c:f>原始数据!$${colLetter}$2:$${colLetter}$${maxRows}</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${maxRows-1}"/></c:numCache></c:numRef></c:val><c:smooth val="1"/></c:ser>`;
+                  serNodes2 += `<${p2}ser><${p2}idx val="${idx}"/><${p2}order val="${idx}"/><${p2}tx><${p2}strRef><${p2}f>原始数据!$${colLetter}$1</${p2}f><${p2}strCache><${p2}ptCount val="1"/><${p2}pt idx="0"><${p2}v>CH${ch.id}</${p2}v></${p2}pt></${p2}strCache></${p2}strRef></${p2}tx><${p2}spPr><a:ln w="28575"/></${p2}spPr><${p2}marker><${p2}symbol val="none"/></${p2}marker><${p2}cat><${p2}numRef><${p2}f>原始数据!$A$2:$A$${maxRows}</${p2}f><${p2}numCache><${p2}formatCode>General</${p2}formatCode><${p2}ptCount val="${maxRows-1}"/></${p2}numCache></${p2}numRef></${p2}cat><${p2}val><${p2}numRef><${p2}f>原始数据!$${colLetter}$2:$${colLetter}$${maxRows}</${p2}f><${p2}numCache><${p2}formatCode>General</${p2}formatCode><${p2}ptCount val="${maxRows-1}"/></${p2}numCache></${p2}numRef></${p2}val><${p2}smooth val="1"/></${p2}ser>`;
               });
-              xml2 = xml2.replace(/<c:ser>[\s\S]*?<\/c:ser>/g, '');
-              xml2 = xml2.replace(/(<c:marker val="1"\/>|<c:axId)/, (match) => serNodes2 + match);
+              xml2 = xml2.replace(new RegExp(`<${p2}ser>[\s\S]*?<\/${p2}ser>`, 'g'), '');
+              xml2 = xml2.replace(new RegExp(`(<${p2}marker val="1"\/>|<${p2}axId)`), (match) => serNodes2 + match);
               zip.file('xl/charts/chart2.xml', xml2);
             }
           }
