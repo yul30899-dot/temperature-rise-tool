@@ -1,66 +1,66 @@
-# coding=utf-8
-import openpyxl
-from openpyxl.chart import LineChart
-from openpyxl.drawing.spreadsheet_drawing import TwoCellAnchor, AnchorMarker
 import zipfile
+import re
 import os
-import copy
 
-def process(size):
-    temp_file = f'temp_template_{size}.xlsx'
+def create_dual_chart_template(size):
+    orig_file = f'public/chart_template_{size}.xlsx'
     final_file = f'public/chart_template_compare_{size}.xlsx'
     
-    # 1. Use openpyxl to build relationships and layouts
-    wb = openpyxl.load_workbook(f'public/chart_template_{size}.xlsx')
+    print(f"Creating {final_file} using pure zipfile method...")
     
-    ws_compare = wb.create_sheet(title=u"对比原始数据")
-    ws_compare.cell(row=1, column=1, value=u"时间")
-    for i in range(1, 201):
-        ws_compare.cell(row=1, column=i+1, value=f"Compare_CH{i}")
-        
-    ws_summary = wb['温升数据']
-    chart1 = ws_summary._charts[0]
-    
-    chart2 = LineChart()
-    ws_summary.add_chart(chart2)
-    
-    chart2.anchor = TwoCellAnchor(
-        _from=AnchorMarker(col=14, colOff=0, row=1, rowOff=0),
-        to=AnchorMarker(col=32, colOff=457200, row=31, rowOff=0)
-    )
-    chart1.anchor = TwoCellAnchor(
-        _from=AnchorMarker(col=14, colOff=0, row=33, rowOff=0),
-        to=AnchorMarker(col=32, colOff=457200, row=63, rowOff=0)
-    )
-    
-    wb.save(temp_file)
-    
-    # 2. Use zipfile to inject original chart XMLs to preserve axes and styling
-    with zipfile.ZipFile(f'public/chart_template_{size}.xlsx', 'r') as zorig:
-        orig_chart1_xml = zorig.read('xl/charts/chart1.xml').decode('utf-8')
-    
-    # Chart1: Current Data
-    xml1 = orig_chart1_xml.replace(u"<a:t>温升曲线图</a:t>", u"<a:t>温升曲线图 (当前测试数据)</a:t>")
-    # Chart2: History Data
-    xml2 = orig_chart1_xml.replace(u"<a:t>温升曲线图</a:t>", u"<a:t>温升曲线图 (历史对比数据)</a:t>")
-    # Must replace axIds to avoid clash with chart1!
-    xml2 = xml2.replace('"50010001"', '"50020001"')
-    xml2 = xml2.replace('"50010002"', '"50020002"')
-    
-    with zipfile.ZipFile(temp_file, 'r') as zin:
+    with zipfile.ZipFile(orig_file, 'r') as zorig:
         with zipfile.ZipFile(final_file, 'w') as zout:
-            for item in zin.infolist():
-                content = zin.read(item.filename)
+            for item in zorig.infolist():
+                content = zorig.read(item.filename)
                 if item.filename == 'xl/charts/chart1.xml':
-                    zout.writestr(item, xml1.encode('utf-8'))
-                elif item.filename == 'xl/charts/chart2.xml':
-                    zout.writestr(item, xml2.encode('utf-8'))
+                    # write chart1
+                    zout.writestr(item, content)
+                    # create chart2
+                    xml2 = content.decode('utf-8')
+                    xml2 = xml2.replace(u"<a:t>温升曲线图</a:t>", u"<a:t>温升曲线图 (历史对比数据)</a:t>")
+                    xml2 = xml2.replace('"50010001"', '"50020001"')
+                    xml2 = xml2.replace('"50010002"', '"50020002"')
+                    zout.writestr('xl/charts/chart2.xml', xml2.encode('utf-8'))
+                
+                elif item.filename == 'xl/drawings/drawing1.xml':
+                    # duplicate the anchor
+                    xml = content.decode('utf-8')
+                    # find the only twoCellAnchor
+                    anchor_match = re.search(r'<xdr:twoCellAnchor>.*?</xdr:twoCellAnchor>', xml, re.DOTALL)
+                    anchor1 = anchor_match.group(0)
+                    
+                    # create anchor2 for the top chart (history data)
+                    anchor2 = anchor1.replace('<xdr:row>32</xdr:row>', '<xdr:row>1</xdr:row>') # from row 1 (0-indexed)
+                    anchor2 = anchor2.replace('<xdr:row>62</xdr:row>', '<xdr:row>31</xdr:row>') # to row 31 (0-indexed)
+                    # change rel id
+                    anchor2 = re.sub(r'r:id="rId\d+"', 'r:id="rId2"', anchor2)
+                    
+                    # keep anchor1 for the bottom chart (current data)
+                    # already positioned at 32 to 62
+                    anchor1_mod = anchor1
+                    
+                    new_xml = xml.replace(anchor1, anchor2 + anchor1_mod)
+                    zout.writestr(item, new_xml.encode('utf-8'))
+                    
+                elif item.filename == 'xl/drawings/_rels/drawing1.xml.rels':
+                    xml = content.decode('utf-8')
+                    # add relation for chart2
+                    new_rel = '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart2.xml"/>'
+                    new_xml = xml.replace('</Relationships>', new_rel + '</Relationships>')
+                    zout.writestr(item, new_xml.encode('utf-8'))
+                    
+                elif item.filename == '[Content_Types].xml':
+                    xml = content.decode('utf-8')
+                    new_override = '<Override PartName="/xl/charts/chart2.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>'
+                    new_xml = xml.replace('</Types>', new_override + '</Types>')
+                    zout.writestr(item, new_xml.encode('utf-8'))
+                    
                 else:
                     zout.writestr(item, content)
-                    
-    os.remove(temp_file)
+
     print(f"Created {final_file}")
 
-if __name__ == "__main__":
-    for size in [200, 500, 1000, 2000, 3000, 5000]:
-        process(size)
+if __name__ == '__main__':
+    sizes = [200, 500, 1000, 2000, 3000, 5000]
+    for s in sizes:
+        create_dual_chart_template(s)
