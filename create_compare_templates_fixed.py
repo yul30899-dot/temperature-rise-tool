@@ -14,7 +14,9 @@ def create_dual_chart_template(size):
                 content = zorig.read(item.filename)
                 if item.filename == 'xl/charts/chart1.xml':
                     # write chart1
-                    zout.writestr(item, content)
+                    xml1 = content.decode('utf-8')
+                    xml1 = xml1.replace(u"<a:t>温升曲线图</a:t>", u"<a:t>温升曲线图 (当前测试数据)</a:t>")
+                    zout.writestr(item, xml1.encode('utf-8'))
                     # create chart2
                     xml2 = content.decode('utf-8')
                     xml2 = xml2.replace(u"<a:t>温升曲线图</a:t>", u"<a:t>温升曲线图 (历史对比数据)</a:t>")
@@ -29,15 +31,17 @@ def create_dual_chart_template(size):
                     anchor_match = re.search(r'<xdr:twoCellAnchor>.*?</xdr:twoCellAnchor>', xml, re.DOTALL)
                     anchor1 = anchor_match.group(0)
                     
-                    # create anchor2 for the top chart (history data)
-                    anchor2 = anchor1.replace('<xdr:row>32</xdr:row>', '<xdr:row>1</xdr:row>') # from row 1 (0-indexed)
-                    anchor2 = anchor2.replace('<xdr:row>62</xdr:row>', '<xdr:row>31</xdr:row>') # to row 31 (0-indexed)
+                    # create anchor2 for the top chart (history data, rId2)
+                    anchor2 = anchor1 # already at row 1 to 31
                     # change rel id
                     anchor2 = re.sub(r'r:id="rId\d+"', 'r:id="rId2"', anchor2)
+                    # change drawing id/name to avoid conflict
+                    anchor2 = re.sub(r'id="\d+" name="[^"]+"', 'id="3" name="Chart 2"', anchor2)
                     
-                    # keep anchor1 for the bottom chart (current data)
-                    # already positioned at 32 to 62
-                    anchor1_mod = anchor1
+                    # change anchor1 for the bottom chart (current data, rId1)
+                    # move from 1->31 to 33->63
+                    anchor1_mod = anchor1.replace('<xdr:row>1</xdr:row>', '<xdr:row>33</xdr:row>')
+                    anchor1_mod = anchor1_mod.replace('<xdr:row>31</xdr:row>', '<xdr:row>63</xdr:row>')
                     
                     new_xml = xml.replace(anchor1, anchor2 + anchor1_mod)
                     zout.writestr(item, new_xml.encode('utf-8'))
