@@ -1153,8 +1153,6 @@ function App() {
       } catch (err) {
         console.error("Failed to dynamically rebuild chart xml:", err);
       }
-        console.error("Failed to dynamically rebuild chart xml:", err);
-      }
       // ----------------------------------------------------
 
       const workbook = await XlsxPopulate.fromDataAsync(arrayBuffer);
