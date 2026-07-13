@@ -1086,7 +1086,9 @@ function App() {
         const dateStr = new Date().toLocaleString('zh-CN', { hour12: false }).replace(/[\/\s:]/g, '');
         exportBaseName = `温升数据报告_${dateStr}`;
       }
-      const dataLen = rawData ? rawData.length : 0;
+      const rawLen = rawData ? rawData.length : 0;
+      const compLen = (isComparing && compareData) ? compareData.length : 0;
+      const dataLen = Math.max(rawLen, compLen);
       let templateName = isComparing ? './chart_template_compare_200.xlsx' : './chart_template_200.xlsx';
       if (dataLen > 3000) templateName = isComparing ? './chart_template_compare_5000.xlsx' : './chart_template_5000.xlsx';
       else if (dataLen > 2000) templateName = isComparing ? './chart_template_compare_3000.xlsx' : './chart_template_3000.xlsx';
@@ -1140,7 +1142,7 @@ function App() {
               let serNodes2 = '';
               channels.forEach((ch, idx) => {
                   const colLetter = getColName(idx + 203);
-                  serNodes2 += `<${p2}ser><${p2}idx val="${idx}"/><${p2}order val="${idx}"/><${p2}tx><${p2}strRef><${p2}f>原始数据!${colLetter}$1</${p2}f><${p2}strCache><${p2}ptCount val="1"/><${p2}pt idx="0"><${p2}v>CH${ch.id}</${p2}v></${p2}pt></${p2}strCache></${p2}strRef></${p2}tx><${p2}spPr><a:ln w="28575" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/></${p2}spPr><${p2}marker><${p2}symbol val="none"/></${p2}marker><${p2}cat><${p2}numRef><${p2}f>原始数据!$A$2:$A${maxRows}</${p2}f><${p2}numCache><${p2}formatCode>General</${p2}formatCode><${p2}ptCount val="${maxRows-1}"/></${p2}numCache></${p2}numRef></${p2}cat><${p2}val><${p2}numRef><${p2}f>原始数据!${colLetter}$2:${colLetter}${maxRows}</${p2}f><${p2}numCache><${p2}formatCode>General</${p2}formatCode><${p2}ptCount val="${maxRows-1}"/></${p2}numCache></${p2}numRef></${p2}val><${p2}smooth val="1"/></${p2}ser>`;
+                  serNodes2 += `<${p2}ser><${p2}idx val="${idx}"/><${p2}order val="${idx}"/><${p2}tx><${p2}strRef><${p2}f>原始数据!$${colLetter}$1</${p2}f><${p2}strCache><${p2}ptCount val="1"/><${p2}pt idx="0"><${p2}v>CH${ch.id}</${p2}v></${p2}pt></${p2}strCache></${p2}strRef></${p2}tx><${p2}spPr><a:ln w="28575" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/></${p2}spPr><${p2}marker><${p2}symbol val="none"/></${p2}marker><${p2}cat><${p2}numRef><${p2}f>原始数据!$A$2:$A$${maxRows}</${p2}f><${p2}numCache><${p2}formatCode>General</${p2}formatCode><${p2}ptCount val="${maxRows-1}"/></${p2}numCache></${p2}numRef></${p2}cat><${p2}val><${p2}numRef><${p2}f>原始数据!$${colLetter}$2:$${colLetter}$${maxRows}</${p2}f><${p2}numCache><${p2}formatCode>General</${p2}formatCode><${p2}ptCount val="${maxRows-1}"/></${p2}numCache></${p2}numRef></${p2}val><${p2}smooth val="1"/></${p2}ser>`;
               });
               xml2 = xml2.replace(new RegExp(`<${p2}ser>[\\s\\S]*?<\\/${p2}ser>`, 'g'), '');
               xml2 = xml2.replace(new RegExp(`(<${p2}marker val="1"\\/>|<${p2}axId)`), (match) => serNodes2 + match);
@@ -1174,27 +1176,33 @@ function App() {
         }
       });
 
-      if (rawData && rawData.length > 0) {
-        rawData.forEach((data, index) => {
+      if (dataLen > 0) {
+        for (let index = 0; index < dataLen; index++) {
           const row = index + 2;
+          const rData = (rawData && index < rawData.length) ? rawData[index] : null;
+          const cData = (isComparing && compareData && index < compareData.length) ? compareData[index] : null;
           
-          // Write the unmutated, original timestamp straight from the imported file
-          dataSheet.cell(row, 1).value(data.originalTime || data.time);
+          if (rData) {
+            dataSheet.cell(row, 1).value(rData.originalTime || rData.time);
+          } else if (cData) {
+            dataSheet.cell(row, 1).value(cData.originalTime || cData.time);
+          }
 
-          // Write actual channel values contiguously matching the rebuilt XML
           channels.forEach((ch, idx) => {
-            const val = data[`CH${ch.id}`];
-            if (val !== undefined) {
-              dataSheet.cell(row, idx + 2).value(val);
+            if (rData) {
+              const val = rData[`CH${ch.id}`];
+              if (val !== undefined) {
+                dataSheet.cell(row, idx + 2).value(val);
+              }
             }
-            if (isComparing) {
-               const cpVal = data[`compare_CH${ch.id}`];
+            if (cData) {
+               const cpVal = cData[`CH${ch.id}`];
                if (cpVal !== undefined) {
                    dataSheet.cell(row, idx + 203).value(cpVal);
                }
             }
           });
-        });
+        }
         
         // Hide all remaining unused rows so the chart doesn't render empty gaps at the end
         const maxRowsMatch = templateName.match(/_(\d+)\.xlsx/);
@@ -1579,7 +1587,7 @@ function App() {
       }
     } catch (err) {
       console.error(err);
-      alert('导出失败，请检查是否缺少图表模板。');
+      alert('导出失败，请检查是否缺少图表模板。\\n详细错误: ' + err.message + '\\n堆栈: ' + err.stack);
     } finally {
       setIsExporting(false);
     }
