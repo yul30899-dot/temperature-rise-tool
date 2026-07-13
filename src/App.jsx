@@ -1168,6 +1168,9 @@ function App() {
       }
 
       // Update chart legend with actual channel names contiguously
+      if (isComparing) {
+         dataSheet.cell(1, 202).value("对比时间");
+      }
       channels.forEach((ch, idx) => {
         const name = ch.name ? `CH${ch.id} ${ch.name}` : `CH${ch.id}`;
         dataSheet.cell(1, idx + 2).value(name);
@@ -1186,6 +1189,9 @@ function App() {
             dataSheet.cell(row, 1).value(rData.originalTime || rData.time);
           } else if (cData) {
             dataSheet.cell(row, 1).value(cData.originalTime || cData.time);
+          }
+          if (cData) {
+            dataSheet.cell(row, 202).value(cData.originalTime || cData.time);
           }
 
           channels.forEach((ch, idx) => {
