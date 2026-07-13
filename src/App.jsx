@@ -1141,8 +1141,8 @@ function App() {
               const p2 = prefixMatch2 && prefixMatch2[1] ? 'c:' : '';
               let serNodes2 = '';
               channels.forEach((ch, idx) => {
-                  const colLetter = getColName(idx + 203);
-                  serNodes2 += `<${p2}ser><${p2}idx val="${idx}"/><${p2}order val="${idx}"/><${p2}tx><${p2}strRef><${p2}f>原始数据!$${colLetter}$1</${p2}f><${p2}strCache><${p2}ptCount val="1"/><${p2}pt idx="0"><${p2}v>CH${ch.id}</${p2}v></${p2}pt></${p2}strCache></${p2}strRef></${p2}tx><${p2}spPr><a:ln w="28575" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/></${p2}spPr><${p2}marker><${p2}symbol val="none"/></${p2}marker><${p2}cat><${p2}numRef><${p2}f>原始数据!$A$2:$A$${maxRows}</${p2}f><${p2}numCache><${p2}formatCode>General</${p2}formatCode><${p2}ptCount val="${maxRows-1}"/></${p2}numCache></${p2}numRef></${p2}cat><${p2}val><${p2}numRef><${p2}f>原始数据!$${colLetter}$2:$${colLetter}$${maxRows}</${p2}f><${p2}numCache><${p2}formatCode>General</${p2}formatCode><${p2}ptCount val="${maxRows-1}"/></${p2}numCache></${p2}numRef></${p2}val><${p2}smooth val="1"/></${p2}ser>`;
+                  const colLetter = getColName(idx + 2);
+                  serNodes2 += `<${p2}ser><${p2}idx val="${idx}"/><${p2}order val="${idx}"/><${p2}tx><${p2}strRef><${p2}f>对比原始数据!$${colLetter}$1</${p2}f><${p2}strCache><${p2}ptCount val="1"/><${p2}pt idx="0"><${p2}v>CH${ch.id}</${p2}v></${p2}pt></${p2}strCache></${p2}strRef></${p2}tx><${p2}spPr><a:ln w="28575" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/></${p2}spPr><${p2}marker><${p2}symbol val="none"/></${p2}marker><${p2}cat><${p2}numRef><${p2}f>对比原始数据!$A$2:$A$${maxRows}</${p2}f><${p2}numCache><${p2}formatCode>General</${p2}formatCode><${p2}ptCount val="${maxRows-1}"/></${p2}numCache></${p2}numRef></${p2}cat><${p2}val><${p2}numRef><${p2}f>对比原始数据!$${colLetter}$2:$${colLetter}$${maxRows}</${p2}f><${p2}numCache><${p2}formatCode>General</${p2}formatCode><${p2}ptCount val="${maxRows-1}"/></${p2}numCache></${p2}numRef></${p2}val><${p2}smooth val="1"/></${p2}ser>`;
               });
               xml2 = xml2.replace(new RegExp(`<${p2}ser>[\\s\\S]*?<\\/${p2}ser>`, 'g'), '');
               xml2 = xml2.replace(new RegExp(`(<${p2}marker val="1"\\/>|<${p2}axId)`), (match) => serNodes2 + match);
@@ -1161,21 +1161,20 @@ function App() {
       
       // --- 1. Populate Raw Data Sheet (For the Chart) ---
       const dataSheet = workbook.sheet('原始数据');
+      const compareSheet = isComparing ? workbook.sheet('对比原始数据') : null;
       
       // Clear out old headers that might be pre-filled in the template
       for (let i = 1; i <= 200; i++) {
          dataSheet.cell(1, i + 1).value(undefined);
+         if (compareSheet) compareSheet.cell(1, i + 1).value(undefined);
       }
 
       // Update chart legend with actual channel names contiguously
-      if (isComparing) {
-         dataSheet.cell(1, 202).value("对比时间");
-      }
       channels.forEach((ch, idx) => {
         const name = ch.name ? `CH${ch.id} ${ch.name}` : `CH${ch.id}`;
         dataSheet.cell(1, idx + 2).value(name);
-        if (isComparing) {
-            dataSheet.cell(1, idx + 203).value(name);
+        if (compareSheet) {
+            compareSheet.cell(1, idx + 2).value(name);
         }
       });
 
@@ -1187,27 +1186,23 @@ function App() {
           
           if (rData) {
             dataSheet.cell(row, 1).value(rData.originalTime || rData.time);
-          } else if (cData) {
-            dataSheet.cell(row, 1).value(cData.originalTime || cData.time);
-          }
-          if (cData) {
-            dataSheet.cell(row, 202).value(cData.originalTime || cData.time);
-          }
-
-          channels.forEach((ch, idx) => {
-            if (rData) {
+            channels.forEach((ch, idx) => {
               const val = rData[`CH${ch.id}`];
               if (val !== undefined) {
                 dataSheet.cell(row, idx + 2).value(val);
               }
-            }
-            if (cData) {
+            });
+          }
+
+          if (cData && compareSheet) {
+            compareSheet.cell(row, 1).value(cData.originalTime || cData.time);
+            channels.forEach((ch, idx) => {
                const cpVal = cData[`CH${ch.id}`];
                if (cpVal !== undefined) {
-                   dataSheet.cell(row, idx + 203).value(cpVal);
+                   compareSheet.cell(row, idx + 2).value(cpVal);
                }
-            }
-          });
+            });
+          }
         }
         
         // Hide all remaining unused rows so the chart doesn't render empty gaps at the end
