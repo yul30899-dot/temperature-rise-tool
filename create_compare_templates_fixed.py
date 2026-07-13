@@ -12,17 +12,37 @@ def create_dual_chart_template(size):
         with zipfile.ZipFile(final_file, 'w') as zout:
             for item in zorig.infolist():
                 content = zorig.read(item.filename)
+                
                 if item.filename == 'xl/charts/chart1.xml':
                     # write chart1
                     xml1 = content.decode('utf-8')
                     xml1 = xml1.replace(u"<a:t>温升曲线图</a:t>", u"<a:t>温升曲线图 (当前测试数据)</a:t>")
                     zout.writestr(item, xml1.encode('utf-8'))
+                    
                     # create chart2
                     xml2 = content.decode('utf-8')
                     xml2 = xml2.replace(u"<a:t>温升曲线图</a:t>", u"<a:t>温升曲线图 (历史对比数据)</a:t>")
+                    xml2 = xml2.replace(u"原始数据", u"对比原始数据")
                     xml2 = xml2.replace('"50010001"', '"50020001"')
                     xml2 = xml2.replace('"50010002"', '"50020002"')
                     zout.writestr('xl/charts/chart2.xml', xml2.encode('utf-8'))
+                    
+                elif item.filename == 'xl/worksheets/sheet2.xml':
+                    # duplicate sheet2 as sheet3 for compare data
+                    zout.writestr(item, content)
+                    zout.writestr('xl/worksheets/sheet3.xml', content)
+                
+                elif item.filename == 'xl/workbook.xml':
+                    xml = content.decode('utf-8')
+                    new_sheet = '<sheet name="对比原始数据" sheetId="3" r:id="rId6"/>'
+                    xml = xml.replace('</sheets>', new_sheet + '</sheets>')
+                    zout.writestr(item, xml.encode('utf-8'))
+                    
+                elif item.filename == 'xl/_rels/workbook.xml.rels':
+                    xml = content.decode('utf-8')
+                    new_rel = '<Relationship Id="rId6" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>'
+                    xml = xml.replace('</Relationships>', new_rel + '</Relationships>')
+                    zout.writestr(item, xml.encode('utf-8'))
                 
                 elif item.filename == 'xl/drawings/drawing1.xml':
                     # duplicate the anchor
@@ -55,8 +75,9 @@ def create_dual_chart_template(size):
                     
                 elif item.filename == '[Content_Types].xml':
                     xml = content.decode('utf-8')
-                    new_override = '<Override PartName="/xl/charts/chart2.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>'
-                    new_xml = xml.replace('</Types>', new_override + '</Types>')
+                    new_override_chart2 = '<Override PartName="/xl/charts/chart2.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>'
+                    new_override_sheet3 = '<Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+                    new_xml = xml.replace('</Types>', new_override_chart2 + new_override_sheet3 + '</Types>')
                     zout.writestr(item, new_xml.encode('utf-8'))
                     
                 else:
